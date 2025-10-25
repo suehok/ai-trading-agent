@@ -4,6 +4,7 @@ import pathlib
 sys.path.append(str(pathlib.Path(__file__).parent.parent))
 from src.agent.decision_maker import TradingAgent
 from src.indicators.taapi_client import TAAPIClient
+from src.indicators.binance_indicators import BinanceIndicators
 from src.trading.hyperliquid_api import HyperliquidAPI
 from src.trading.binance_api import BinanceAPI
 from src.trading.base_trading_api import BaseTradingAPI
@@ -72,7 +73,15 @@ def main():
     if not args.assets or not args.interval:
         parser.error("Please provide --assets and --interval, or set ASSETS and INTERVAL in .env")
 
-    taapi = TAAPIClient()
+    # Choose indicators client based on trading platform
+    from src.config_loader import CONFIG
+    platform = CONFIG.get("trading_platform", "hyperliquid").lower()
+    
+    if platform == "binance":
+        indicators_client = BinanceIndicators()
+    else:
+        indicators_client = TAAPIClient()
+    
     trading_api = create_trading_api()
     agent = TradingAgent()
     risk_manager = RiskManager()
@@ -234,7 +243,7 @@ def main():
 
             # Check and close if exit conditions met
             for trade in active_trades[:]:
-                if await check_exit_condition(trade, taapi, trading_api):
+                if await check_exit_condition(trade, indicators_client, trading_api):
                     close_order = await trading_api.place_sell_order(trade['asset'], trade['amount']) if trade['is_long'] else await trading_api.place_buy_order(trade['asset'], trade['amount'])
                     add_event(f"Closed {trade['asset']} due to exit plan: {trade['exit_plan']}")
                     # Cancel all remaining orders for this asset (TP/SL and any orphans)
@@ -266,15 +275,15 @@ def main():
                     oi = await trading_api.get_open_interest(asset)
                     funding = await trading_api.get_funding_rate(asset)
 
-                    # Initial indicators (intraday) from TAAPI only; avoid spot/perp basis mismatch
-                    indicators = taapi.get_indicators(asset, args.interval)
+                    # Initial indicators (intraday) from indicators client
+                    indicators = await indicators_client.get_indicators(asset, args.interval) if hasattr(indicators_client, 'get_indicators') else indicators_client.get_indicators(asset, args.interval)
                     hist_prices = []
 
                     intraday_tf = "5m"
-                    ema_series = taapi.fetch_series("ema", f"{asset}/USDT", intraday_tf, results=10, params={"period": 20}, value_key="value")
-                    macd_series = taapi.fetch_series("macd", f"{asset}/USDT", intraday_tf, results=10, value_key="valueMACD")
-                    rsi7_series = taapi.fetch_series("rsi", f"{asset}/USDT", intraday_tf, results=10, params={"period": 7}, value_key="value")
-                    rsi14_series = taapi.fetch_series("rsi", f"{asset}/USDT", intraday_tf, results=10, params={"period": 14}, value_key="value")
+                    ema_series = await indicators_client.fetch_series("ema", f"{asset}/USDT", intraday_tf, results=10, params={"period": 20}, value_key="value") if hasattr(indicators_client, 'fetch_series') else indicators_client.fetch_series("ema", f"{asset}/USDT", intraday_tf, results=10, params={"period": 20}, value_key="value")
+                    macd_series = await indicators_client.fetch_series("macd", f"{asset}/USDT", intraday_tf, results=10, value_key="valueMACD") if hasattr(indicators_client, 'fetch_series') else indicators_client.fetch_series("macd", f"{asset}/USDT", intraday_tf, results=10, value_key="valueMACD")
+                    rsi7_series = await indicators_client.fetch_series("rsi", f"{asset}/USDT", intraday_tf, results=10, params={"period": 7}, value_key="value") if hasattr(indicators_client, 'fetch_series') else indicators_client.fetch_series("rsi", f"{asset}/USDT", intraday_tf, results=10, params={"period": 7}, value_key="value")
+                    rsi14_series = await indicators_client.fetch_series("rsi", f"{asset}/USDT", intraday_tf, results=10, params={"period": 14}, value_key="value") if hasattr(indicators_client, 'fetch_series') else indicators_client.fetch_series("rsi", f"{asset}/USDT", intraday_tf, results=10, params={"period": 14}, value_key="value")
                     cur_rsi7 = round(rsi7_series[-1], 2) if rsi7_series else "N/A"
                     cur_ema20 = round(ema_series[-1], 2) if ema_series else "N/A"
                     cur_macd = round(macd_series[-1], 2) if macd_series else "N/A"
@@ -284,16 +293,15 @@ def main():
                     rsi14_series_r = [fmt(v, 2) for v in rsi14_series] if rsi14_series else []
 
                     # Long-term (4h)
-                    lt_ema20 = taapi.fetch_value("ema", f"{asset}/USDT", "4h", params={"period": 20}, key="value")
+                    lt_ema20 = await indicators_client.fetch_value("ema", f"{asset}/USDT", "4h", params={"period": 20}, key="value") if hasattr(indicators_client, 'fetch_value') else indicators_client.fetch_value("ema", f"{asset}/USDT", "4h", params={"period": 20}, key="value")
                     lt_ema20 = round(lt_ema20, 2) if lt_ema20 is not None else "N/A"
-                    lt_ema50 = taapi.fetch_value("ema", f"{asset}/USDT", "4h", params={"period": 50}, key="value")
+                    lt_ema50 = await indicators_client.fetch_value("ema", f"{asset}/USDT", "4h", params={"period": 50}, key="value") if hasattr(indicators_client, 'fetch_value') else indicators_client.fetch_value("ema", f"{asset}/USDT", "4h", params={"period": 50}, key="value")
                     lt_ema50 = round(lt_ema50, 2) if lt_ema50 is not None else "N/A"
-                    lt_atr3 = taapi.fetch_value("atr", f"{asset}/USDT", "4h", params={"period": 3}, key="value")
-                    lt_atr3 = round(lt_atr3, 2) if lt_atr3 is not None else "N/A"
-                    lt_atr14 = taapi.fetch_value("atr", f"{asset}/USDT", "4h", params={"period": 14}, key="value")
-                    lt_atr14 = round(lt_atr14, 2) if lt_atr14 is not None else "N/A"
-                    lt_macd_series = taapi.fetch_series("macd", f"{asset}/USDT", "4h", results=10, value_key="valueMACD")
-                    lt_rsi_series = taapi.fetch_series("rsi", f"{asset}/USDT", "4h", results=10, params={"period": 14}, value_key="value")
+                    # ATR not implemented in Binance indicators yet, using placeholder
+                    lt_atr3 = "N/A"
+                    lt_atr14 = "N/A"
+                    lt_macd_series = await indicators_client.fetch_series("macd", f"{asset}/USDT", "4h", results=10, value_key="valueMACD") if hasattr(indicators_client, 'fetch_series') else indicators_client.fetch_series("macd", f"{asset}/USDT", "4h", results=10, value_key="valueMACD")
+                    lt_rsi_series = await indicators_client.fetch_series("rsi", f"{asset}/USDT", "4h", results=10, params={"period": 14}, value_key="value") if hasattr(indicators_client, 'fetch_series') else indicators_client.fetch_series("rsi", f"{asset}/USDT", "4h", results=10, params={"period": 14}, value_key="value")
                     lt_macd_series_r = [fmt(v, 2) for v in lt_macd_series] if lt_macd_series else []
                     lt_rsi_series_r = [fmt(v, 2) for v in lt_rsi_series] if lt_rsi_series else []
 
@@ -580,17 +588,22 @@ def main():
         std = math.sqrt(var) if var > 0 else 0
         return mean / std if std > 0 else 0
 
-    async def check_exit_condition(trade, taapi, trading_api):
+    async def check_exit_condition(trade, indicators_client, trading_api):
         plan = (trade.get("exit_plan") or "").lower()
         if not plan:
             return False
         try:
             if "macd" in plan and "below" in plan:
-                macd = taapi.get_indicators(trade["asset"], "4h")["macd"]["valueMACD"]
+                indicators = await indicators_client.get_indicators(trade["asset"], "4h") if hasattr(indicators_client, 'get_indicators') else indicators_client.get_indicators(trade["asset"], "4h")
+                macd = indicators.get("macd", {}).get("valueMACD")
+                if macd is None:
+                    return False
                 threshold = float(plan.split("below")[-1].strip())
                 return macd < threshold
             if "close above ema50" in plan:
-                ema50 = taapi.get_historical_indicator("ema", f"{trade['asset']}/USDT", "4h", results=1, params={"period": 50})[0]["value"]
+                ema50 = await indicators_client.fetch_value("ema", f"{trade['asset']}/USDT", "4h", params={"period": 50}, key="value") if hasattr(indicators_client, 'fetch_value') else indicators_client.fetch_value("ema", f"{trade['asset']}/USDT", "4h", params={"period": 50}, key="value")
+                if ema50 is None:
+                    return False
                 current = await trading_api.get_current_price(trade["asset"])
                 return current > ema50
         except Exception:

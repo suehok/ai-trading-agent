@@ -6,7 +6,9 @@ from src.config_loader import CONFIG
 
 class TAAPIClient:
     def __init__(self):
-        self.api_key = CONFIG["taapi_api_key"]
+        self.api_key = CONFIG.get("taapi_api_key")
+        if not self.api_key:
+            raise ValueError("TAAPI_API_KEY is required when using TAAPI indicators")
         self.base_url = "https://api.taapi.io/"
 
     def _get_with_retry(self, url, params, retries=3, backoff=0.5):

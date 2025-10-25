@@ -10,7 +10,7 @@ def _get_env(name: str, default: str | None = None, required: bool = False) -> s
     return value
 
 CONFIG = {
-    "taapi_api_key": _get_env("TAAPI_API_KEY", required=True),
+    "taapi_api_key": _get_env("TAAPI_API_KEY"),  # Optional when using Binance indicators
     "hyperliquid_private_key": _get_env("HYPERLIQUID_PRIVATE_KEY") or _get_env("LIGHTER_PRIVATE_KEY"),
     "mnemonic": _get_env("MNEMONIC"),
     # Hyperliquid network/base URL overrides
