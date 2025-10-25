@@ -29,14 +29,17 @@ def clear_terminal():
     os.system('cls' if os.name == 'nt' else 'clear')
 
 def get_interval_seconds(interval_str):
-    if interval_str.endswith('m'):
-        return int(interval_str[:-1]) * 60
-    elif interval_str.endswith('h'):
-        return int(interval_str[:-1]) * 3600
-    elif interval_str.endswith('d'):
-        return int(interval_str[:-1]) * 86400
+    # Clean interval string - remove quotes and extra characters
+    clean_interval = interval_str.strip().replace('"', '').replace("'", '')
+    
+    if clean_interval.endswith('m'):
+        return int(clean_interval[:-1]) * 60
+    elif clean_interval.endswith('h'):
+        return int(clean_interval[:-1]) * 3600
+    elif clean_interval.endswith('d'):
+        return int(clean_interval[:-1]) * 86400
     else:
-        raise ValueError(f"Unsupported interval: {interval_str}")
+        raise ValueError(f"Unsupported interval: {clean_interval}")
 
 def create_trading_api() -> BaseTradingAPI:
     """Create the appropriate trading API instance based on configuration."""
