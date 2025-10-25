@@ -394,48 +394,12 @@ class BinanceAPI(BaseTradingAPI):
             return {}
     
     def round_size(self, asset: str, amount: float) -> float:
-        """Round amount to asset's precision using cached symbol info."""
+        """Round amount to asset's precision using hardcoded rules."""
         # Clean asset name
         clean_asset = asset.strip().strip('"').strip("'").upper()
-        symbol = f"{clean_asset}USDT"
         
-        # Use cached symbol info if available
-        if hasattr(self, '_symbol_cache') and symbol in self._symbol_cache:
-            symbol_info = self._symbol_cache[symbol]
-        else:
-            # Fallback to hardcoded step sizes for major assets
-            step_sizes = {
-                'BTC': 0.00001,   # 5 decimal places
-                'ETH': 0.0001,    # 4 decimal places
-                'SOL': 0.001,     # 3 decimal places
-                'BNB': 0.001,     # 3 decimal places
-                'ZEC': 0.001,     # 3 decimal places
-                'XRP': 0.1,       # 1 decimal place
-                'DOGE': 1.0,      # 0 decimal places
-                'EIGEN': 0.01,    # 2 decimal places
-            }
-            
-            step_size = step_sizes.get(clean_asset, 0.00001)
-            rounded = round(amount / step_size) * step_size
-            return max(rounded, step_size)
-        
-        # Extract lot size filter from symbol info
-        lot_size_filter = None
-        for filter_info in symbol_info.get('filters', []):
-            if filter_info.get('filterType') == 'LOT_SIZE':
-                lot_size_filter = filter_info
-                break
-        
-        if lot_size_filter:
-            step_size = float(lot_size_filter.get('stepSize', '0.00001'))
-            min_qty = float(lot_size_filter.get('minQty', '0.00001'))
-            
-            # Round to the appropriate step size
-            rounded = round(amount / step_size) * step_size
-            return max(rounded, min_qty)
-        
-        # Fallback to basic rounding
-        return round(amount, 8)
+        # Use the same precision fix logic as the async version
+        return self._apply_precision_fix(clean_asset, amount)
     
     async def round_size_async(self, asset: str, amount: float) -> float:
         """Round amount to asset's precision using live symbol info."""
