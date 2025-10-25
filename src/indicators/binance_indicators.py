@@ -41,8 +41,8 @@ class BinanceIndicators:
     async def get_klines(self, symbol: str, interval: str, limit: int = 100) -> List[List]:
         """Get klines data from Binance."""
         try:
-            # Clean symbol format
-            clean_symbol = symbol.replace("/", "").upper()
+            # Clean symbol format - remove quotes and extra characters
+            clean_symbol = symbol.strip().strip('"').strip("'").replace("/", "").upper()
             if not clean_symbol.endswith("USDT"):
                 clean_symbol = f"{clean_symbol}USDT"
             
@@ -189,8 +189,11 @@ class BinanceIndicators:
     async def get_indicators(self, asset: str, interval: str) -> Dict[str, Any]:
         """Get technical indicators for an asset."""
         try:
+            # Clean asset name - remove quotes and extra characters
+            clean_asset = asset.strip().strip('"').strip("'").upper()
+            
             # Get klines data
-            klines = await self.get_klines(f"{asset}/USDT", interval, limit=100)
+            klines = await self.get_klines(f"{clean_asset}/USDT", interval, limit=100)
             
             if not klines:
                 return {"rsi": None, "macd": None, "sma": None, "ema": None, "bbands": None}
@@ -229,8 +232,11 @@ class BinanceIndicators:
     async def fetch_series(self, indicator: str, symbol: str, interval: str, results: int = 10, params: Dict = None, value_key: str = "value") -> List[float]:
         """Fetch historical series of an indicator."""
         try:
+            # Clean symbol - remove quotes and extra characters
+            clean_symbol = symbol.strip().strip('"').strip("'")
+            
             # Get klines data
-            klines = await self.get_klines(symbol, interval, limit=results * 2)  # Get more data for calculations
+            klines = await self.get_klines(clean_symbol, interval, limit=results * 2)  # Get more data for calculations
             
             if not klines:
                 return []

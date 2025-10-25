@@ -143,8 +143,8 @@ class BinanceAPI(BaseTradingAPI):
     async def get_current_price(self, asset: str) -> float:
         """Get current price for an asset."""
         try:
-            # Clean asset name and format symbol properly
-            clean_asset = asset.strip().upper()
+            # Clean asset name and format symbol properly - remove quotes and extra characters
+            clean_asset = asset.strip().strip('"').strip("'").upper()
             symbol = f"{clean_asset}USDT"
             data = await self._make_request('GET', '/api/v3/ticker/price', {'symbol': symbol})
             return float(data.get('price', 0.0))
@@ -155,8 +155,8 @@ class BinanceAPI(BaseTradingAPI):
     async def place_buy_order(self, asset: str, amount: float, **kwargs) -> Dict[str, Any]:
         """Place a buy order."""
         try:
-            # Clean asset name and format symbol properly
-            clean_asset = asset.strip().upper()
+            # Clean asset name and format symbol properly - remove quotes and extra characters
+            clean_asset = asset.strip().strip('"').strip("'").upper()
             symbol = f"{clean_asset}USDT"
             quantity = self.round_size(asset, amount)
             
@@ -176,8 +176,8 @@ class BinanceAPI(BaseTradingAPI):
     async def place_sell_order(self, asset: str, amount: float, **kwargs) -> Dict[str, Any]:
         """Place a sell order."""
         try:
-            # Clean asset name and format symbol properly
-            clean_asset = asset.strip().upper()
+            # Clean asset name and format symbol properly - remove quotes and extra characters
+            clean_asset = asset.strip().strip('"').strip("'").upper()
             symbol = f"{clean_asset}USDT"
             quantity = self.round_size(asset, amount)
             
@@ -197,8 +197,8 @@ class BinanceAPI(BaseTradingAPI):
     async def place_take_profit(self, asset: str, is_buy: bool, amount: float, tp_price: float) -> Dict[str, Any]:
         """Place a take profit order."""
         try:
-            # Clean asset name and format symbol properly
-            clean_asset = asset.strip().upper()
+            # Clean asset name and format symbol properly - remove quotes and extra characters
+            clean_asset = asset.strip().strip('"').strip("'").upper()
             symbol = f"{clean_asset}USDT"
             quantity = self.round_size(asset, amount)
             side = 'SELL' if is_buy else 'BUY'
@@ -221,8 +221,8 @@ class BinanceAPI(BaseTradingAPI):
     async def place_stop_loss(self, asset: str, is_buy: bool, amount: float, sl_price: float) -> Dict[str, Any]:
         """Place a stop loss order."""
         try:
-            # Clean asset name and format symbol properly
-            clean_asset = asset.strip().upper()
+            # Clean asset name and format symbol properly - remove quotes and extra characters
+            clean_asset = asset.strip().strip('"').strip("'").upper()
             symbol = f"{clean_asset}USDT"
             quantity = self.round_size(asset, amount)
             side = 'SELL' if is_buy else 'BUY'
@@ -246,7 +246,9 @@ class BinanceAPI(BaseTradingAPI):
     async def cancel_order(self, asset: str, order_id: str) -> Dict[str, Any]:
         """Cancel a specific order."""
         try:
-            symbol = f"{asset}USDT"
+            # Clean asset name and format symbol properly - remove quotes and extra characters
+            clean_asset = asset.strip().strip('"').strip("'").upper()
+            symbol = f"{clean_asset}USDT"
             params = {
                 'symbol': symbol,
                 'orderId': order_id
@@ -261,7 +263,9 @@ class BinanceAPI(BaseTradingAPI):
     async def cancel_all_orders(self, asset: str) -> Dict[str, Any]:
         """Cancel all orders for an asset."""
         try:
-            symbol = f"{asset}USDT"
+            # Clean asset name and format symbol properly - remove quotes and extra characters
+            clean_asset = asset.strip().strip('"').strip("'").upper()
+            symbol = f"{clean_asset}USDT"
             params = {'symbol': symbol}
             
             result = await self._make_request('DELETE', '/api/v3/openOrders', params, signed=True)
