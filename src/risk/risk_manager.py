@@ -115,6 +115,20 @@ class RiskManager:
                 logging.warning(f"Allocation reduced due to leverage limit: ${adjusted_allocation}")
                 return True, "Allocation reduced due to leverage limit", adjusted_allocation
         
+        # Check if we have sufficient balance for this allocation
+        if allocation_usd > current_balance:
+            # Calculate maximum allocation we can afford
+            max_allocation_by_balance = current_balance
+            
+            # Check if the maximum allocation meets minimum position size
+            if max_allocation_by_balance < self.min_position_size:
+                return False, f"Insufficient balance for minimum position size (need ${self.min_position_size:.2f}, have ${current_balance:.2f})", 0.0
+            
+            # Adjust allocation to what we can afford
+            adjusted_allocation = max_allocation_by_balance
+            logging.warning(f"Allocation reduced due to insufficient balance: ${allocation_usd:.2f} -> ${adjusted_allocation:.2f}")
+            return True, "Allocation reduced due to insufficient balance", adjusted_allocation
+        
         return True, "Allocation approved", allocation_usd
     
     def validate_position_sizing(self, asset: str, amount: float, price: float, 
@@ -134,10 +148,19 @@ class RiskManager:
         if price <= 0:
             return False, "Invalid price", 0.0
         
-        # Check if we have sufficient balance
-        if allocation_usd > current_balance * self.max_leverage:
-            max_amount = (current_balance * self.max_leverage) / price
-            return False, f"Insufficient balance for position size", max_amount
+        # Check if we have sufficient balance (for spot trading, no leverage)
+        if allocation_usd > current_balance:
+            # Calculate maximum amount we can afford
+            max_amount = current_balance / price
+            
+            # Check if the maximum amount meets minimum position size
+            if max_amount * price < self.min_position_size:
+                return False, f"Insufficient balance for minimum position size (need ${self.min_position_size:.2f}, have ${current_balance:.2f})", 0.0
+            
+            # Adjust amount to what we can afford
+            adjusted_amount = max_amount
+            logging.warning(f"Position size adjusted due to insufficient balance: {amount:.4f} -> {adjusted_amount:.4f} (${allocation_usd:.2f} -> ${current_balance:.2f})")
+            return True, "Position size adjusted due to insufficient balance", adjusted_amount
         
         return True, "Position size approved", amount
     
