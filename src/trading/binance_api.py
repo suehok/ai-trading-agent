@@ -62,10 +62,8 @@ class BinanceAPI(BaseTradingAPI):
             query_string = urlencode(params, doseq=True)
             signature = self._generate_signature(query_string)
             params['signature'] = signature
-            headers = self._get_headers()
-        else:
-            headers = self._get_headers()
         
+        headers = self._get_headers()
         url = f"{self.base_url}{endpoint}"
         
         for attempt in range(3):
@@ -78,6 +76,7 @@ class BinanceAPI(BaseTradingAPI):
                                 raise aiohttp.ClientError(f"HTTP {response.status}: {error_text}")
                             data = await response.json()
                     elif method.upper() == 'POST':
+                        # Binance POST requests use form data, not JSON
                         async with session.post(url, data=params, headers=headers, timeout=10) as response:
                             if response.status != 200:
                                 error_text = await response.text()
@@ -103,27 +102,35 @@ class BinanceAPI(BaseTradingAPI):
     async def get_user_state(self) -> Dict[str, Any]:
         """Get user account state including balance and positions."""
         try:
-            # Get account information
+            # Get spot account information
             account_info = await self._make_request('GET', '/api/v3/account', signed=True)
             
-            # Get futures account info for positions
-            futures_account = await self._make_request('GET', '/fapi/v2/account', signed=True)
-            
-            balance = float(account_info.get('totalWalletBalance', 0.0))
+            # Calculate total balance from all assets
+            balance = 0.0
             positions = []
             
-            # Process futures positions
-            for position in futures_account.get('positions', []):
-                if float(position.get('positionAmt', 0)) != 0:
-                    pos_data = {
-                        'coin': position.get('symbol', '').replace('USDT', ''),
-                        'szi': float(position.get('positionAmt', 0)),
-                        'entryPx': float(position.get('avgPrice', 0)),
-                        'leverage': float(position.get('leverage', 1)),
-                        'pnl': float(position.get('unrealizedPnl', 0)),
-                        'liquidationPx': float(position.get('liquidationPrice', 0))
-                    }
-                    positions.append(pos_data)
+            # Process spot balances
+            for balance_info in account_info.get('balances', []):
+                asset = balance_info.get('asset', '')
+                free = float(balance_info.get('free', 0.0))
+                locked = float(balance_info.get('locked', 0.0))
+                total = free + locked
+                
+                if total > 0:
+                    if asset == 'USDT':
+                        balance += total
+                    else:
+                        # For non-USDT assets, we'll treat them as positions
+                        # In a real implementation, you'd convert to USDT value
+                        pos_data = {
+                            'coin': asset,
+                            'szi': total,
+                            'entryPx': 0.0,  # Would need to track entry price
+                            'leverage': 1.0,
+                            'pnl': 0.0,  # Would need to calculate PnL
+                            'liquidationPx': 0.0
+                        }
+                        positions.append(pos_data)
             
             return {
                 'balance': balance,
@@ -148,18 +155,20 @@ class BinanceAPI(BaseTradingAPI):
     async def place_buy_order(self, asset: str, amount: float, **kwargs) -> Dict[str, Any]:
         """Place a buy order."""
         try:
-            symbol = f"{asset}USDT"
+            # Clean asset name and format symbol properly
+            clean_asset = asset.strip().upper()
+            symbol = f"{clean_asset}USDT"
             quantity = self.round_size(asset, amount)
             
             params = {
                 'symbol': symbol,
                 'side': 'BUY',
                 'type': 'MARKET',
-                'quantity': quantity
+                'quantity': str(quantity)
             }
             
             result = await self._make_request('POST', '/api/v3/order', params, signed=True)
-            return {'response': {'data': {'statuses': [{'filled': {'oid': result.get('orderId')}}]}}}
+            return {'response': {'data': {'statuses': [{'filled': {'oid': str(result.get('orderId'))}}]}}}
         except Exception as e:
             logging.error(f"Error placing buy order for {asset}: {e}")
             return {'error': str(e)}
@@ -167,18 +176,20 @@ class BinanceAPI(BaseTradingAPI):
     async def place_sell_order(self, asset: str, amount: float, **kwargs) -> Dict[str, Any]:
         """Place a sell order."""
         try:
-            symbol = f"{asset}USDT"
+            # Clean asset name and format symbol properly
+            clean_asset = asset.strip().upper()
+            symbol = f"{clean_asset}USDT"
             quantity = self.round_size(asset, amount)
             
             params = {
                 'symbol': symbol,
                 'side': 'SELL',
                 'type': 'MARKET',
-                'quantity': quantity
+                'quantity': str(quantity)
             }
             
             result = await self._make_request('POST', '/api/v3/order', params, signed=True)
-            return {'response': {'data': {'statuses': [{'filled': {'oid': result.get('orderId')}}]}}}
+            return {'response': {'data': {'statuses': [{'filled': {'oid': str(result.get('orderId'))}}]}}}
         except Exception as e:
             logging.error(f"Error placing sell order for {asset}: {e}")
             return {'error': str(e)}
@@ -186,7 +197,9 @@ class BinanceAPI(BaseTradingAPI):
     async def place_take_profit(self, asset: str, is_buy: bool, amount: float, tp_price: float) -> Dict[str, Any]:
         """Place a take profit order."""
         try:
-            symbol = f"{asset}USDT"
+            # Clean asset name and format symbol properly
+            clean_asset = asset.strip().upper()
+            symbol = f"{clean_asset}USDT"
             quantity = self.round_size(asset, amount)
             side = 'SELL' if is_buy else 'BUY'
             
@@ -194,13 +207,13 @@ class BinanceAPI(BaseTradingAPI):
                 'symbol': symbol,
                 'side': side,
                 'type': 'LIMIT',
-                'quantity': quantity,
-                'price': tp_price,
+                'quantity': str(quantity),
+                'price': str(tp_price),
                 'timeInForce': 'GTC'
             }
             
             result = await self._make_request('POST', '/api/v3/order', params, signed=True)
-            return {'response': {'data': {'statuses': [{'resting': {'oid': result.get('orderId')}}]}}}
+            return {'response': {'data': {'statuses': [{'resting': {'oid': str(result.get('orderId'))}}]}}}
         except Exception as e:
             logging.error(f"Error placing take profit for {asset}: {e}")
             return {'error': str(e)}
@@ -208,20 +221,24 @@ class BinanceAPI(BaseTradingAPI):
     async def place_stop_loss(self, asset: str, is_buy: bool, amount: float, sl_price: float) -> Dict[str, Any]:
         """Place a stop loss order."""
         try:
-            symbol = f"{asset}USDT"
+            # Clean asset name and format symbol properly
+            clean_asset = asset.strip().upper()
+            symbol = f"{clean_asset}USDT"
             quantity = self.round_size(asset, amount)
             side = 'SELL' if is_buy else 'BUY'
             
             params = {
                 'symbol': symbol,
                 'side': side,
-                'type': 'STOP_MARKET',
-                'quantity': quantity,
-                'stopPrice': sl_price
+                'type': 'STOP_LOSS_LIMIT',
+                'quantity': str(quantity),
+                'price': str(sl_price),
+                'stopPrice': str(sl_price),
+                'timeInForce': 'GTC'
             }
             
             result = await self._make_request('POST', '/api/v3/order', params, signed=True)
-            return {'response': {'data': {'statuses': [{'resting': {'oid': result.get('orderId')}}]}}}
+            return {'response': {'data': {'statuses': [{'resting': {'oid': str(result.get('orderId'))}}]}}}
         except Exception as e:
             logging.error(f"Error placing stop loss for {asset}: {e}")
             return {'error': str(e)}
@@ -317,28 +334,16 @@ class BinanceAPI(BaseTradingAPI):
         return oids
     
     async def get_open_interest(self, asset: str) -> Optional[float]:
-        """Get open interest for an asset (Binance futures only)."""
-        try:
-            # Clean asset name and format symbol properly
-            clean_asset = asset.strip().upper()
-            symbol = f"{clean_asset}USDT"
-            data = await self._make_request('GET', '/fapi/v1/openInterest', {'symbol': symbol})
-            return float(data.get('openInterest', 0))
-        except Exception as e:
-            logging.error(f"Error getting open interest for {asset}: {e}")
-            return None
+        """Get open interest for an asset (Not available in spot trading)."""
+        # Open interest is not available in Binance spot trading
+        # This is a futures-only feature
+        return None
     
     async def get_funding_rate(self, asset: str) -> Optional[float]:
-        """Get funding rate for an asset (Binance futures only)."""
-        try:
-            # Clean asset name and format symbol properly
-            clean_asset = asset.strip().upper()
-            symbol = f"{clean_asset}USDT"
-            data = await self._make_request('GET', '/fapi/v1/premiumIndex', {'symbol': symbol})
-            return float(data.get('lastFundingRate', 0))
-        except Exception as e:
-            logging.error(f"Error getting funding rate for {asset}: {e}")
-            return None
+        """Get funding rate for an asset (Not available in spot trading)."""
+        # Funding rates are not available in Binance spot trading
+        # This is a futures-only feature
+        return None
     
     def round_size(self, asset: str, amount: float) -> float:
         """Round amount to asset's precision."""

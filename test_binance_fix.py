@@ -33,12 +33,17 @@ async def test_binance_api():
         # Test getting user state (requires auth)
         print("Testing get_user_state...")
         state = await api.get_user_state()
-        print(f"✅ User state: Balance ${state.get('balance', 0):.2f}")
+        print(f"✅ User state: Balance ${state.get('balance', 0):.2f}, Positions: {len(state.get('positions', []))}")
         
         # Test getting open orders (requires auth)
         print("Testing get_open_orders...")
         orders = await api.get_open_orders()
         print(f"✅ Open orders: {len(orders)}")
+        
+        # Test getting recent fills (requires auth)
+        print("Testing get_recent_fills...")
+        fills = await api.get_recent_fills(limit=5)
+        print(f"✅ Recent fills: {len(fills)}")
         
         print("🎉 All tests passed!")
         return True

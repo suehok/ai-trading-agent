@@ -14,7 +14,7 @@ The following issues have been resolved in the Binance API implementation:
 
 ### 3. API Endpoint Issues
 - **Problem**: Some endpoints returning 404 errors
-- **Fix**: Improved error handling and request formatting
+- **Fix**: Updated to use correct spot API endpoints (futures features not available in spot)
 
 ## Configuration
 
@@ -73,8 +73,8 @@ python test_binance_fix.py
 - **Fix**: Updated symbol cleaning in the API client
 
 ### 3. "404 Not Found" for open interest/funding
-- **Cause**: Some assets may not have futures contracts
-- **Fix**: The API now handles this gracefully and returns None
+- **Cause**: Open interest and funding rates are not available in spot trading
+- **Fix**: These features are now disabled for spot trading (futures-only features)
 
 ### 4. TAAPI Authentication Errors
 - **Cause**: TAAPI API key format issues
