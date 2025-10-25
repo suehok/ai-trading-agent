@@ -173,7 +173,7 @@ class BinanceAPI(BaseTradingAPI):
                 }
                 logging.info(f"Using quoteOrderQty for {asset}: ${order_value:.2f}")
             else:
-                quantity = self.round_size(asset, amount)
+                quantity = await self.round_size_async(asset, amount)
                 params = {
                     'symbol': symbol,
                     'side': 'BUY',
@@ -212,7 +212,7 @@ class BinanceAPI(BaseTradingAPI):
                 }
                 logging.info(f"Using quoteOrderQty for {asset}: ${order_value:.2f}")
             else:
-                quantity = self.round_size(asset, amount)
+                quantity = await self.round_size_async(asset, amount)
                 params = {
                     'symbol': symbol,
                     'side': 'SELL',
@@ -236,7 +236,7 @@ class BinanceAPI(BaseTradingAPI):
             # Clean asset name and format symbol properly - remove quotes and extra characters
             clean_asset = asset.strip().strip('"').strip("'").upper()
             symbol = f"{clean_asset}USDT"
-            quantity = self.round_size(asset, amount)
+            quantity = await self.round_size_async(asset, amount)
             side = 'SELL' if is_buy else 'BUY'
             
             params = {
@@ -260,7 +260,7 @@ class BinanceAPI(BaseTradingAPI):
             # Clean asset name and format symbol properly - remove quotes and extra characters
             clean_asset = asset.strip().strip('"').strip("'").upper()
             symbol = f"{clean_asset}USDT"
-            quantity = self.round_size(asset, amount)
+            quantity = await self.round_size_async(asset, amount)
             side = 'SELL' if is_buy else 'BUY'
             
             params = {
@@ -379,20 +379,143 @@ class BinanceAPI(BaseTradingAPI):
         # This is a futures-only feature
         return None
     
+    async def get_symbol_info(self, symbol: str) -> Dict[str, Any]:
+        """Get symbol information including lot size rules."""
+        try:
+            exchange_info = await self._make_request('GET', '/api/v3/exchangeInfo')
+            symbols = exchange_info.get('symbols', [])
+            
+            for symbol_info in symbols:
+                if symbol_info.get('symbol') == symbol:
+                    return symbol_info
+            return {}
+        except Exception as e:
+            logging.error(f"Error getting symbol info for {symbol}: {e}")
+            return {}
+    
     def round_size(self, asset: str, amount: float) -> float:
-        """Round amount to asset's precision."""
-        # Binance step sizes for major assets
+        """Round amount to asset's precision using cached symbol info."""
+        # Clean asset name
+        clean_asset = asset.strip().strip('"').strip("'").upper()
+        symbol = f"{clean_asset}USDT"
+        
+        # Use cached symbol info if available
+        if hasattr(self, '_symbol_cache') and symbol in self._symbol_cache:
+            symbol_info = self._symbol_cache[symbol]
+        else:
+            # Fallback to hardcoded step sizes for major assets
+            step_sizes = {
+                'BTC': 0.00001,   # 5 decimal places
+                'ETH': 0.0001,    # 4 decimal places
+                'SOL': 0.001,     # 3 decimal places
+                'BNB': 0.001,     # 3 decimal places
+                'ZEC': 0.001,     # 3 decimal places
+                'XRP': 0.1,       # 1 decimal place
+                'DOGE': 1.0,      # 0 decimal places
+                'EIGEN': 0.01,    # 2 decimal places
+            }
+            
+            step_size = step_sizes.get(clean_asset, 0.00001)
+            rounded = round(amount / step_size) * step_size
+            return max(rounded, step_size)
+        
+        # Extract lot size filter from symbol info
+        lot_size_filter = None
+        for filter_info in symbol_info.get('filters', []):
+            if filter_info.get('filterType') == 'LOT_SIZE':
+                lot_size_filter = filter_info
+                break
+        
+        if lot_size_filter:
+            step_size = float(lot_size_filter.get('stepSize', '0.00001'))
+            min_qty = float(lot_size_filter.get('minQty', '0.00001'))
+            
+            # Round to the appropriate step size
+            rounded = round(amount / step_size) * step_size
+            return max(rounded, min_qty)
+        
+        # Fallback to basic rounding
+        return round(amount, 8)
+    
+    async def round_size_async(self, asset: str, amount: float) -> float:
+        """Round amount to asset's precision using live symbol info."""
+        try:
+            # Clean asset name
+            clean_asset = asset.strip().strip('"').strip("'").upper()
+            symbol = f"{clean_asset}USDT"
+            
+            # Get symbol info
+            symbol_info = await self.get_symbol_info(symbol)
+            
+            if symbol_info:
+                # Extract lot size filter
+                lot_size_filter = None
+                for filter_info in symbol_info.get('filters', []):
+                    if filter_info.get('filterType') == 'LOT_SIZE':
+                        lot_size_filter = filter_info
+                        break
+                
+                if lot_size_filter:
+                    step_size = float(lot_size_filter.get('stepSize', '0.00001'))
+                    min_qty = float(lot_size_filter.get('minQty', '0.00001'))
+                    
+                    # Round to the appropriate step size
+                    rounded = round(amount / step_size) * step_size
+                    rounded = max(rounded, min_qty)
+                else:
+                    # Fallback to hardcoded precision
+                    rounded = self._apply_precision_fix(clean_asset, amount)
+            else:
+                # Fallback to hardcoded precision if symbol info not available
+                rounded = self._apply_precision_fix(clean_asset, amount)
+            
+            return rounded
+            
+        except Exception as e:
+            logging.error(f"Error rounding size for {asset}: {e}")
+            # Fallback to hardcoded precision
+            return self._apply_precision_fix(clean_asset, amount)
+    
+    def _apply_precision_fix(self, clean_asset: str, amount: float) -> float:
+        """Apply precision fix based on asset type."""
+        # Fallback to hardcoded step sizes for major assets
         step_sizes = {
             'BTC': 0.00001,   # 5 decimal places
             'ETH': 0.0001,    # 4 decimal places
             'SOL': 0.001,     # 3 decimal places
             'BNB': 0.001,     # 3 decimal places
             'ZEC': 0.001,     # 3 decimal places
+            'XRP': 0.1,       # 1 decimal place
+            'DOGE': 1.0,      # 0 decimal places
+            'EIGEN': 0.01,    # 2 decimal places
         }
         
-        # Get step size for the asset
-        step_size = step_sizes.get(asset.upper(), 0.00001)
+        step_size = step_sizes.get(clean_asset, 0.00001)
         
         # Round to the appropriate step size
         rounded = round(amount / step_size) * step_size
-        return max(rounded, step_size)  # Ensure minimum step size
+        
+        # Additional precision fix: round to the appropriate number of decimal places
+        if clean_asset == 'BTC':
+            # BTC: 5 decimal places
+            rounded = round(rounded, 5)
+        elif clean_asset == 'ETH':
+            # ETH: 4 decimal places
+            rounded = round(rounded, 4)
+        elif clean_asset in ['SOL', 'BNB', 'ZEC']:
+            # SOL, BNB, ZEC: 3 decimal places
+            rounded = round(rounded, 3)
+        elif clean_asset == 'XRP':
+            # XRP: 1 decimal place
+            rounded = round(rounded, 1)
+        elif clean_asset == 'DOGE':
+            # DOGE: 0 decimal places
+            rounded = round(rounded, 0)
+        elif clean_asset == 'EIGEN':
+            # EIGEN: 2 decimal places
+            rounded = round(rounded, 2)
+        else:
+            # Default: 8 decimal places
+            rounded = round(rounded, 8)
+        
+        return max(rounded, step_size)
