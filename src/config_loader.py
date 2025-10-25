@@ -9,6 +9,24 @@ def _get_env(name: str, default: str | None = None, required: bool = False) -> s
         raise RuntimeError(f"Missing required environment variable: {name}")
     return value
 
+def _get_valid_model() -> str:
+    """Get a valid LLM model, with fallback for invalid models."""
+    model = _get_env("LLM_MODEL", "x-ai/grok-4")
+    
+    # List of invalid models that should be replaced
+    invalid_models = [
+        "deepseek/deepseek-chat-v3.1",
+        "deepseek/deepseek-chat-v3",
+        "deepseek/deepseek-chat"
+    ]
+    
+    # If the model is invalid, use a valid fallback
+    if model in invalid_models:
+        print(f"Warning: Invalid model '{model}' detected. Using fallback 'x-ai/grok-4'")
+        return "x-ai/grok-4"
+    
+    return model
+
 CONFIG = {
     "taapi_api_key": _get_env("TAAPI_API_KEY"),  # Optional when using Binance indicators
     "hyperliquid_private_key": _get_env("HYPERLIQUID_PRIVATE_KEY") or _get_env("LIGHTER_PRIVATE_KEY"),
@@ -27,7 +45,7 @@ CONFIG = {
     "openrouter_base_url": _get_env("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
     "openrouter_referer": _get_env("OPENROUTER_REFERER"),
     "openrouter_app_title": _get_env("OPENROUTER_APP_TITLE", "trading-agent"),
-    "llm_model": _get_env("LLM_MODEL", "x-ai/grok-4"),
+    "llm_model": _get_valid_model(),
     # Runtime controls via env
     "assets": _get_env("ASSETS"),  # e.g., "BTC ETH SOL" or "BTC,ETH,SOL"
     "interval": _get_env("INTERVAL"),  # e.g., "5m", "1h"
