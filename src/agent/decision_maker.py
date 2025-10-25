@@ -3,6 +3,7 @@ from src.config_loader import CONFIG
 from src.indicators.taapi_client import TAAPIClient
 import json
 import logging
+import time
 from datetime import datetime
 
 def _get_valid_model(model: str) -> str:
@@ -139,14 +140,52 @@ class TradingAgent:
                 f.write(f"Model: {payload.get('model')}\n")
                 f.write(f"Headers: {json.dumps({k: v for k, v in headers.items() if k != 'Authorization'})}\n")
                 f.write(f"Payload:\n{json.dumps(payload, indent=2)}\n")
-            resp = requests.post(self.base_url, headers=headers, json=payload, timeout=60)
-            logging.info(f"Received response from OpenRouter (status: {resp.status_code})")
-            if resp.status_code != 200:
-                logging.error(f"OpenRouter error: {resp.status_code} - {resp.text}")
-                with open("llm_requests.log", "a") as f:
-                    f.write(f"ERROR Response: {resp.status_code} - {resp.text}\n")
-            resp.raise_for_status()
-            return resp.json()
+            # Add timeout and retry logic
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    logging.info(f"Making OpenRouter request (attempt {attempt + 1}/{max_retries})")
+                    resp = requests.post(self.base_url, headers=headers, json=payload, timeout=90)
+                    logging.info(f"Received response from OpenRouter (status: {resp.status_code})")
+                    
+                    if resp.status_code != 200:
+                        logging.error(f"OpenRouter error: {resp.status_code} - {resp.text}")
+                        with open("llm_requests.log", "a") as f:
+                            f.write(f"ERROR Response: {resp.status_code} - {resp.text}\n")
+                        if attempt < max_retries - 1:
+                            logging.warning(f"Retrying request in 5 seconds...")
+                            time.sleep(5)
+                            continue
+                    
+                    resp.raise_for_status()
+                    return resp.json()
+                    
+                except requests.exceptions.Timeout:
+                    logging.warning(f"Request timeout on attempt {attempt + 1}/{max_retries}")
+                    if attempt < max_retries - 1:
+                        logging.warning(f"Retrying request in 10 seconds...")
+                        time.sleep(10)
+                        continue
+                    else:
+                        logging.error("All retry attempts failed due to timeout")
+                        raise
+                except requests.exceptions.ConnectionError:
+                    logging.warning(f"Connection error on attempt {attempt + 1}/{max_retries}")
+                    if attempt < max_retries - 1:
+                        logging.warning(f"Retrying request in 5 seconds...")
+                        time.sleep(5)
+                        continue
+                    else:
+                        logging.error("All retry attempts failed due to connection error")
+                        raise
+                except Exception as e:
+                    logging.error(f"Unexpected error on attempt {attempt + 1}: {e}")
+                    if attempt < max_retries - 1:
+                        logging.warning(f"Retrying request in 5 seconds...")
+                        time.sleep(5)
+                        continue
+                    else:
+                        raise
 
         def _sanitize_to_array(raw_content: str, assets_list):
             """Use a fast model to coerce any content into the exact JSON array schema."""
