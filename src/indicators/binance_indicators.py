@@ -46,9 +46,12 @@ class BinanceIndicators:
             if not clean_symbol.endswith("USDT"):
                 clean_symbol = f"{clean_symbol}USDT"
             
+            # Clean interval format - remove quotes and extra characters
+            clean_interval = interval.strip().strip('"').strip("'")
+            
             params = {
                 'symbol': clean_symbol,
-                'interval': interval,
+                'interval': clean_interval,
                 'limit': limit
             }
             
@@ -189,11 +192,12 @@ class BinanceIndicators:
     async def get_indicators(self, asset: str, interval: str) -> Dict[str, Any]:
         """Get technical indicators for an asset."""
         try:
-            # Clean asset name - remove quotes and extra characters
+            # Clean asset name and interval - remove quotes and extra characters
             clean_asset = asset.strip().strip('"').strip("'").upper()
+            clean_interval = interval.strip().strip('"').strip("'")
             
             # Get klines data
-            klines = await self.get_klines(f"{clean_asset}/USDT", interval, limit=100)
+            klines = await self.get_klines(f"{clean_asset}/USDT", clean_interval, limit=100)
             
             if not klines:
                 return {"rsi": None, "macd": None, "sma": None, "ema": None, "bbands": None}
@@ -232,11 +236,12 @@ class BinanceIndicators:
     async def fetch_series(self, indicator: str, symbol: str, interval: str, results: int = 10, params: Dict = None, value_key: str = "value") -> List[float]:
         """Fetch historical series of an indicator."""
         try:
-            # Clean symbol - remove quotes and extra characters
+            # Clean symbol and interval - remove quotes and extra characters
             clean_symbol = symbol.strip().strip('"').strip("'")
+            clean_interval = interval.strip().strip('"').strip("'")
             
             # Get klines data
-            klines = await self.get_klines(clean_symbol, interval, limit=results * 2)  # Get more data for calculations
+            klines = await self.get_klines(clean_symbol, clean_interval, limit=results * 2)  # Get more data for calculations
             
             if not klines:
                 return []

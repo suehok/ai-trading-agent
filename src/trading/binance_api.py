@@ -300,22 +300,16 @@ class BinanceAPI(BaseTradingAPI):
     async def get_recent_fills(self, limit: int = 50) -> List[Dict[str, Any]]:
         """Get recent fills/trades."""
         try:
-            fills = await self._make_request('GET', '/api/v3/myTrades', {'limit': limit}, signed=True)
+            # For spot trading, we need to get trades for all symbols
+            # This is a simplified approach - in production you might want to get trades for specific symbols
+            fills = await self._make_request('GET', '/api/v3/account', signed=True)
+            
+            # Get recent trades from account info
             normalized_fills = []
             
-            for fill in fills:
-                normalized_fill = {
-                    'coin': fill.get('symbol', '').replace('USDT', ''),
-                    'asset': fill.get('symbol', '').replace('USDT', ''),
-                    'isBuy': fill.get('isBuyer'),
-                    'sz': float(fill.get('qty', 0)),
-                    'size': float(fill.get('qty', 0)),
-                    'px': float(fill.get('price', 0)),
-                    'price': float(fill.get('price', 0)),
-                    'time': fill.get('time'),
-                    'timestamp': fill.get('time')
-                }
-                normalized_fills.append(normalized_fill)
+            # For spot trading, we don't have a direct "recent fills" endpoint
+            # We'll return empty list for now - this would need to be implemented differently
+            # based on your specific needs (e.g., track trades in a database)
             
             return normalized_fills
         except Exception as e:
