@@ -10,11 +10,10 @@ WORKDIR /app
 # Copy project metadata
 COPY pyproject.toml ./
 
-# Install Poetry lightweightly and update lock file
+# Install Poetry and dependencies directly
 ENV POETRY_VIRTUALENVS_CREATE=false \
     POETRY_NO_INTERACTION=1
 RUN pip install --no-cache-dir poetry && \
-    poetry lock --no-update && \
     poetry install --no-interaction --no-ansi --no-root
 
 # Copy source
@@ -26,5 +25,3 @@ EXPOSE 3000
 
 # Default command: run as module to keep absolute imports working
 ENTRYPOINT ["poetry", "run", "python", "-m", "src.main"]
-
-
