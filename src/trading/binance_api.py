@@ -59,9 +59,10 @@ class BinanceAPI(BaseTradingAPI):
         
         # Generate signature for signed requests
         if signed:
-            query_string = urlencode(params)
+            query_string = urlencode(params, doseq=True)
             signature = self._generate_signature(query_string)
-            headers = self._get_headers(signature)
+            params['signature'] = signature
+            headers = self._get_headers()
         else:
             headers = self._get_headers()
         
@@ -72,16 +73,22 @@ class BinanceAPI(BaseTradingAPI):
                 async with aiohttp.ClientSession() as session:
                     if method.upper() == 'GET':
                         async with session.get(url, params=params, headers=headers, timeout=10) as response:
+                            if response.status != 200:
+                                error_text = await response.text()
+                                raise aiohttp.ClientError(f"HTTP {response.status}: {error_text}")
                             data = await response.json()
                     elif method.upper() == 'POST':
                         async with session.post(url, data=params, headers=headers, timeout=10) as response:
+                            if response.status != 200:
+                                error_text = await response.text()
+                                raise aiohttp.ClientError(f"HTTP {response.status}: {error_text}")
                             data = await response.json()
                     elif method.upper() == 'DELETE':
                         async with session.delete(url, params=params, headers=headers, timeout=10) as response:
+                            if response.status != 200:
+                                error_text = await response.text()
+                                raise aiohttp.ClientError(f"HTTP {response.status}: {error_text}")
                             data = await response.json()
-                    
-                    if response.status != 200:
-                        raise aiohttp.ClientError(f"HTTP {response.status}: {data}")
                     
                     return data
                     
@@ -129,7 +136,9 @@ class BinanceAPI(BaseTradingAPI):
     async def get_current_price(self, asset: str) -> float:
         """Get current price for an asset."""
         try:
-            symbol = f"{asset}USDT"
+            # Clean asset name and format symbol properly
+            clean_asset = asset.strip().upper()
+            symbol = f"{clean_asset}USDT"
             data = await self._make_request('GET', '/api/v3/ticker/price', {'symbol': symbol})
             return float(data.get('price', 0.0))
         except Exception as e:
@@ -310,7 +319,9 @@ class BinanceAPI(BaseTradingAPI):
     async def get_open_interest(self, asset: str) -> Optional[float]:
         """Get open interest for an asset (Binance futures only)."""
         try:
-            symbol = f"{asset}USDT"
+            # Clean asset name and format symbol properly
+            clean_asset = asset.strip().upper()
+            symbol = f"{clean_asset}USDT"
             data = await self._make_request('GET', '/fapi/v1/openInterest', {'symbol': symbol})
             return float(data.get('openInterest', 0))
         except Exception as e:
@@ -320,7 +331,9 @@ class BinanceAPI(BaseTradingAPI):
     async def get_funding_rate(self, asset: str) -> Optional[float]:
         """Get funding rate for an asset (Binance futures only)."""
         try:
-            symbol = f"{asset}USDT"
+            # Clean asset name and format symbol properly
+            clean_asset = asset.strip().upper()
+            symbol = f"{clean_asset}USDT"
             data = await self._make_request('GET', '/fapi/v1/premiumIndex', {'symbol': symbol})
             return float(data.get('lastFundingRate', 0))
         except Exception as e:
