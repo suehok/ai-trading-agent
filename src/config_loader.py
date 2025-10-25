@@ -16,6 +16,12 @@ CONFIG = {
     # Hyperliquid network/base URL overrides
     "hyperliquid_base_url": _get_env("HYPERLIQUID_BASE_URL"),
     "hyperliquid_network": _get_env("HYPERLIQUID_NETWORK", "mainnet"),
+    # Binance API credentials
+    "binance_api_key": _get_env("BINANCE_API_KEY"),
+    "binance_secret_key": _get_env("BINANCE_SECRET_KEY"),
+    "binance_testnet": _get_env("BINANCE_TESTNET", "false"),
+    # Trading platform selection
+    "trading_platform": _get_env("TRADING_PLATFORM", "hyperliquid"),  # "hyperliquid" or "binance"
     # LLM via OpenRouter
     "openrouter_api_key": _get_env("OPENROUTER_API_KEY", required=True),
     "openrouter_base_url": _get_env("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
@@ -28,4 +34,11 @@ CONFIG = {
     # API server
     "api_host": _get_env("API_HOST", "0.0.0.0"),
     "api_port": _get_env("APP_PORT") or _get_env("API_PORT") or "3000",
+    # Risk Management Settings
+    "max_total_allocation": _get_env("MAX_TOTAL_ALLOCATION", "1000.0"),
+    "max_single_position": _get_env("MAX_SINGLE_POSITION", "500.0"),
+    "max_daily_loss": _get_env("MAX_DAILY_LOSS", "100.0"),
+    "max_leverage": _get_env("MAX_LEVERAGE", "5.0"),
+    "min_position_size": _get_env("MIN_POSITION_SIZE", "10.0"),
+    "max_consecutive_losses": _get_env("MAX_CONSECUTIVE_LOSSES", "3"),
 }

@@ -5,6 +5,9 @@ sys.path.append(str(pathlib.Path(__file__).parent.parent))
 from src.agent.decision_maker import TradingAgent
 from src.indicators.taapi_client import TAAPIClient
 from src.trading.hyperliquid_api import HyperliquidAPI
+from src.trading.binance_api import BinanceAPI
+from src.trading.base_trading_api import BaseTradingAPI
+from src.risk.risk_manager import RiskManager
 import time
 import asyncio
 import logging
@@ -34,6 +37,18 @@ def get_interval_seconds(interval_str):
     else:
         raise ValueError(f"Unsupported interval: {interval_str}")
 
+def create_trading_api() -> BaseTradingAPI:
+    """Create the appropriate trading API instance based on configuration."""
+    from src.config_loader import CONFIG
+    platform = CONFIG.get("trading_platform", "hyperliquid").lower()
+    
+    if platform == "binance":
+        return BinanceAPI()
+    elif platform == "hyperliquid":
+        return HyperliquidAPI()
+    else:
+        raise ValueError(f"Unsupported trading platform: {platform}. Supported platforms: hyperliquid, binance")
+
 def main():
     clear_terminal()
     parser = argparse.ArgumentParser(description="LLM-based Trading Agent on Hyperliquid")
@@ -58,8 +73,9 @@ def main():
         parser.error("Please provide --assets and --interval, or set ASSETS and INTERVAL in .env")
 
     taapi = TAAPIClient()
-    hyperliquid = HyperliquidAPI()
+    trading_api = create_trading_api()
     agent = TradingAgent()
+    risk_manager = RiskManager()
 
 
     start_time = datetime.now(timezone.utc)
@@ -86,7 +102,7 @@ def main():
             # number formatting helpers imported from src.utils.formatting
 
             # Global account state
-            state = await hyperliquid.get_user_state()
+            state = await trading_api.get_user_state()
             sharpe = calculate_sharpe(trade_log)
 
             # Format account info like example
@@ -94,10 +110,19 @@ def main():
             if initial_account_value is None:
                 initial_account_value = account_value
             total_return = ((account_value - initial_account_value) / initial_account_value * 100.0) if initial_account_value else 0.0
-            account_info = f"Current Total Return (percent): {total_return:.2f}%\nAvailable Cash: {fmt(state['balance'], 2)}\nCurrent Account Value: {fmt(account_value, 2)}\nSharpe Ratio: {sharpe:.3f}\nCurrent live positions & performance:\n"
+            # Get risk management summary
+            risk_summary = risk_manager.get_risk_summary()
+            
+            account_info = f"Current Total Return (percent): {total_return:.2f}%\nAvailable Cash: {fmt(state['balance'], 2)}\nCurrent Account Value: {fmt(account_value, 2)}\nSharpe Ratio: {sharpe:.3f}\n"
+            account_info += f"Risk Management Status:\n"
+            account_info += f"- Daily PnL: {fmt(risk_summary['daily_pnl'], 2)}\n"
+            account_info += f"- Consecutive Losses: {risk_summary['consecutive_losses']}\n"
+            account_info += f"- Circuit Breaker: {'ACTIVE' if risk_summary['circuit_breaker_active'] else 'INACTIVE'}\n"
+            account_info += f"- Total Allocated: {fmt(risk_summary['total_allocated'], 2)} / {fmt(risk_summary['max_total_allocation'], 2)}\n"
+            account_info += f"Current live positions & performance:\n"
             for pos in state['positions']:
                 coin = pos.get('coin')
-                current_px = round(await hyperliquid.get_current_price(coin), 2) if coin else 0
+                current_px = round(await trading_api.get_current_price(coin), 2) if coin else 0
                 liq_px = fmt(pos.get('liquidationPx') or pos.get('liqPx', 0), 2)
                 qty_disp = fmt_sz(pos.get('szi'))
                 entry_disp = fmt(pos.get('entryPx'), 2)
@@ -133,7 +158,7 @@ def main():
 
             # Include active open orders context (TP/SL or any resting orders)
             try:
-                open_orders = await hyperliquid.get_open_orders()
+                open_orders = await trading_api.get_open_orders()
                 account_info += "\nActive Open Orders:\n"
                 for o in open_orders[:50]:  # cap to 50 for prompt size
                     coin = o.get('coin')
@@ -183,7 +208,7 @@ def main():
 
             # Include recent fills to reflect executed TP/SL
             try:
-                fills = await hyperliquid.get_recent_fills(limit=50)
+                fills = await trading_api.get_recent_fills(limit=50)
                 account_info += "\nRecent Fills (latest 20):\n"
                 for f in fills[-20:]:
                     try:
@@ -209,11 +234,11 @@ def main():
 
             # Check and close if exit conditions met
             for trade in active_trades[:]:
-                if await check_exit_condition(trade, taapi, hyperliquid):
-                    close_order = await hyperliquid.place_sell_order(trade['asset'], trade['amount']) if trade['is_long'] else await hyperliquid.place_buy_order(trade['asset'], trade['amount'])
+                if await check_exit_condition(trade, taapi, trading_api):
+                    close_order = await trading_api.place_sell_order(trade['asset'], trade['amount']) if trade['is_long'] else await trading_api.place_buy_order(trade['asset'], trade['amount'])
                     add_event(f"Closed {trade['asset']} due to exit plan: {trade['exit_plan']}")
                     # Cancel all remaining orders for this asset (TP/SL and any orphans)
-                    cancel_result = await hyperliquid.cancel_all_orders(trade['asset'])
+                    cancel_result = await trading_api.cancel_all_orders(trade['asset'])
                     add_event(f"Cancelled {cancel_result.get('cancelled_count', 0)} orders for {trade['asset']}")
                     active_trades.remove(trade)
                     # Log to diary
@@ -233,13 +258,13 @@ def main():
             for asset in args.assets:
                 try:
                     # Gather data like example
-                    current_price = round(await hyperliquid.get_current_price(asset), 2)
+                    current_price = round(await trading_api.get_current_price(asset), 2)
                     # Update perp mid-price history (sampled per loop)
                     if asset not in price_history:
                         price_history[asset] = deque(maxlen=60)
                     price_history[asset].append({"t": datetime.now(timezone.utc).isoformat(), "mid": fmt(current_price, 2)})
-                    oi = await hyperliquid.get_open_interest(asset)
-                    funding = await hyperliquid.get_funding_rate(asset)
+                    oi = await trading_api.get_open_interest(asset)
+                    funding = await trading_api.get_funding_rate(asset)
 
                     # Initial indicators (intraday) from TAAPI only; avoid spot/perp basis mismatch
                     indicators = taapi.get_indicators(asset, args.interval)
@@ -357,12 +382,50 @@ def main():
                         if alloc_usd <= 0:
                             add_event(f"Holding {asset}: zero/negative allocation")
                             continue
+                        
+                        # Risk management validation
+                        is_valid, reason, adjusted_allocation = risk_manager.validate_allocation(
+                            alloc_usd, state['balance'], state['positions'], asset
+                        )
+                        
+                        if not is_valid:
+                            add_event(f"Risk management blocked {asset}: {reason}")
+                            # Log hold decision to diary
+                            with open(diary_path, "a") as f:
+                                diary_entry = {
+                                    "timestamp": datetime.now().isoformat(),
+                                    "asset": asset,
+                                    "action": "hold",
+                                    "rationale": f"Risk management: {reason}",
+                                    "risk_reason": reason
+                                }
+                                f.write(json.dumps(diary_entry) + "\n")
+                            continue
+                        
+                        # Use adjusted allocation if risk manager modified it
+                        if adjusted_allocation != alloc_usd:
+                            add_event(f"Risk management adjusted {asset} allocation: ${alloc_usd:.2f} -> ${adjusted_allocation:.2f}")
+                            alloc_usd = adjusted_allocation
+                        
                         amount = alloc_usd / current_price
+                        
+                        # Additional position sizing validation
+                        is_size_valid, size_reason, adjusted_amount = risk_manager.validate_position_sizing(
+                            asset, amount, current_price, is_buy, state['balance']
+                        )
+                        
+                        if not is_size_valid:
+                            add_event(f"Position sizing blocked {asset}: {size_reason}")
+                            continue
+                        
+                        if adjusted_amount != amount:
+                            add_event(f"Position size adjusted for {asset}: {amount:.4f} -> {adjusted_amount:.4f}")
+                            amount = adjusted_amount
 
-                        order = await hyperliquid.place_buy_order(asset, amount) if is_buy else await hyperliquid.place_sell_order(asset, amount)
+                        order = await trading_api.place_buy_order(asset, amount) if is_buy else await trading_api.place_sell_order(asset, amount)
                         # Confirm by checking recent fills for this asset shortly after placing
                         await asyncio.sleep(1)
-                        fills_check = await hyperliquid.get_recent_fills(limit=10)
+                        fills_check = await trading_api.get_recent_fills(limit=10)
                         filled = False
                         for fc in reversed(fills_check):
                             try:
@@ -371,17 +434,22 @@ def main():
                                     break
                             except Exception:
                                 continue
-                        trade_log.append({"type": action, "price": current_price, "amount": amount, "exit_plan": output["exit_plan"], "filled": filled})
+                        # Calculate trade PnL for risk tracking
+                        trade_pnl = 0.0  # Will be updated when position is closed
+                        trade_log.append({"type": action, "price": current_price, "amount": amount, "exit_plan": output["exit_plan"], "filled": filled, "pnl": trade_pnl})
+                        
+                        # Update risk manager with trade
+                        risk_manager.total_allocated += alloc_usd
                         tp_oid = None
                         sl_oid = None
                         if output["tp_price"]:
-                            tp_order = await hyperliquid.place_take_profit(asset, is_buy, amount, output["tp_price"])
-                            tp_oids = hyperliquid.extract_oids(tp_order)
+                            tp_order = await trading_api.place_take_profit(asset, is_buy, amount, output["tp_price"])
+                            tp_oids = trading_api.extract_oids(tp_order)
                             tp_oid = tp_oids[0] if tp_oids else None
                             add_event(f"TP placed {asset} at {output['tp_price']}")
                         if output["sl_price"]:
-                            sl_order = await hyperliquid.place_stop_loss(asset, is_buy, amount, output["sl_price"])
-                            sl_oids = hyperliquid.extract_oids(sl_order)
+                            sl_order = await trading_api.place_stop_loss(asset, is_buy, amount, output["sl_price"])
+                            sl_oids = trading_api.extract_oids(sl_order)
                             sl_oid = sl_oids[0] if sl_oids else None
                             add_event(f"SL placed {asset} at {output['sl_price']}")
                         # Reconcile: if opposite-side position exists or TP/SL just filled, clear stale active_trades for this asset
@@ -512,7 +580,7 @@ def main():
         std = math.sqrt(var) if var > 0 else 0
         return mean / std if std > 0 else 0
 
-    async def check_exit_condition(trade, taapi, hyperliquid):
+    async def check_exit_condition(trade, taapi, trading_api):
         plan = (trade.get("exit_plan") or "").lower()
         if not plan:
             return False
@@ -523,7 +591,7 @@ def main():
                 return macd < threshold
             if "close above ema50" in plan:
                 ema50 = taapi.get_historical_indicator("ema", f"{trade['asset']}/USDT", "4h", results=1, params={"period": 50})[0]["value"]
-                current = await hyperliquid.get_current_price(trade["asset"])
+                current = await trading_api.get_current_price(trade["asset"])
                 return current > ema50
         except Exception:
             return False
