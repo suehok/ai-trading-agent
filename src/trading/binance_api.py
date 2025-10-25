@@ -18,6 +18,9 @@ class BinanceAPI(BaseTradingAPI):
         self.api_key = CONFIG.get("binance_api_key")
         self.secret_key = CONFIG.get("binance_secret_key")
         self.testnet = CONFIG.get("binance_testnet", "false").lower() == "true"
+        self.futures_enabled = CONFIG.get("binance_futures_enabled", "false").lower() == "true"
+        self.futures_leverage = float(CONFIG.get("binance_futures_leverage", "5.0"))
+        self.futures_margin_type = CONFIG.get("binance_futures_margin_type", "ISOLATED")
         
         if not self.api_key or not self.secret_key:
             raise ValueError("BINANCE_API_KEY and BINANCE_SECRET_KEY must be provided")
@@ -25,10 +28,13 @@ class BinanceAPI(BaseTradingAPI):
         # Choose base URL based on testnet setting
         if self.testnet:
             self.base_url = "https://testnet.binance.vision"
+            self.futures_base_url = "https://testnet.binancefuture.com"
         else:
             self.base_url = "https://api.binance.com"
+            self.futures_base_url = "https://fapi.binance.com"
         
         self.ws_url = "wss://testnet.binance.vision/ws" if self.testnet else "wss://stream.binance.com:9443/ws"
+        self.futures_ws_url = "wss://testnet.binancefuture.com/ws" if self.testnet else "wss://fstream.binance.com/ws"
         
     def _generate_signature(self, query_string: str) -> str:
         """Generate HMAC SHA256 signature for Binance API."""
@@ -48,7 +54,7 @@ class BinanceAPI(BaseTradingAPI):
             headers['X-MBX-SIGNATURE'] = signature
         return headers
     
-    async def _make_request(self, method: str, endpoint: str, params: Dict = None, signed: bool = False) -> Dict[str, Any]:
+    async def _make_request(self, method: str, endpoint: str, params: Dict = None, signed: bool = False, use_futures: bool = False) -> Dict[str, Any]:
         """Make HTTP request to Binance API with retry logic."""
         if params is None:
             params = {}
@@ -64,7 +70,8 @@ class BinanceAPI(BaseTradingAPI):
             params['signature'] = signature
         
         headers = self._get_headers()
-        url = f"{self.base_url}{endpoint}"
+        base_url = self.futures_base_url if use_futures else self.base_url
+        url = f"{base_url}{endpoint}"
         
         for attempt in range(3):
             try:
@@ -368,16 +375,32 @@ class BinanceAPI(BaseTradingAPI):
         return oids
     
     async def get_open_interest(self, asset: str) -> Optional[float]:
-        """Get open interest for an asset (Not available in spot trading)."""
-        # Open interest is not available in Binance spot trading
-        # This is a futures-only feature
-        return None
+        """Get open interest for an asset."""
+        if not self.futures_enabled:
+            return None
+        
+        try:
+            clean_asset = asset.strip().strip('"').strip("'").upper()
+            symbol = f"{clean_asset}USDT"
+            data = await self._make_request('GET', '/fapi/v1/openInterest', {'symbol': symbol}, use_futures=True)
+            return float(data.get('openInterest', 0.0))
+        except Exception as e:
+            logging.error(f"Error getting open interest for {asset}: {e}")
+            return None
     
     async def get_funding_rate(self, asset: str) -> Optional[float]:
-        """Get funding rate for an asset (Not available in spot trading)."""
-        # Funding rates are not available in Binance spot trading
-        # This is a futures-only feature
-        return None
+        """Get funding rate for an asset."""
+        if not self.futures_enabled:
+            return None
+        
+        try:
+            clean_asset = asset.strip().strip('"').strip("'").upper()
+            symbol = f"{clean_asset}USDT"
+            data = await self._make_request('GET', '/fapi/v1/premiumIndex', {'symbol': symbol}, use_futures=True)
+            return float(data.get('lastFundingRate', 0.0))
+        except Exception as e:
+            logging.error(f"Error getting funding rate for {asset}: {e}")
+            return None
     
     async def get_symbol_info(self, symbol: str) -> Dict[str, Any]:
         """Get symbol information including lot size rules."""
@@ -483,3 +506,63 @@ class BinanceAPI(BaseTradingAPI):
             rounded = round(rounded, 8)
         
         return max(rounded, step_size)
+    
+    # Futures-specific methods
+    async def set_leverage(self, symbol: str, leverage: int) -> Dict[str, Any]:
+        """Set leverage for a futures symbol."""
+        if not self.futures_enabled:
+            return {'error': 'Futures trading not enabled'}
+        
+        try:
+            params = {
+                'symbol': symbol,
+                'leverage': leverage
+            }
+            result = await self._make_request('POST', '/fapi/v1/leverage', params, signed=True, use_futures=True)
+            return result
+        except Exception as e:
+            logging.error(f"Error setting leverage for {symbol}: {e}")
+            return {'error': str(e)}
+    
+    async def set_margin_type(self, symbol: str, margin_type: str) -> Dict[str, Any]:
+        """Set margin type for a futures symbol."""
+        if not self.futures_enabled:
+            return {'error': 'Futures trading not enabled'}
+        
+        try:
+            params = {
+                'symbol': symbol,
+                'marginType': margin_type
+            }
+            result = await self._make_request('POST', '/fapi/v1/marginType', params, signed=True, use_futures=True)
+            return result
+        except Exception as e:
+            logging.error(f"Error setting margin type for {symbol}: {e}")
+            return {'error': str(e)}
+    
+    async def get_position_info(self, symbol: str = None) -> List[Dict[str, Any]]:
+        """Get position information for futures."""
+        if not self.futures_enabled:
+            return []
+        
+        try:
+            params = {}
+            if symbol:
+                params['symbol'] = symbol
+            result = await self._make_request('GET', '/fapi/v2/positionRisk', params, signed=True, use_futures=True)
+            return result if isinstance(result, list) else []
+        except Exception as e:
+            logging.error(f"Error getting position info: {e}")
+            return []
+    
+    async def get_futures_account_info(self) -> Dict[str, Any]:
+        """Get futures account information."""
+        if not self.futures_enabled:
+            return {'error': 'Futures trading not enabled'}
+        
+        try:
+            result = await self._make_request('GET', '/fapi/v2/account', signed=True, use_futures=True)
+            return result
+        except Exception as e:
+            logging.error(f"Error getting futures account info: {e}")
+            return {'error': str(e)}

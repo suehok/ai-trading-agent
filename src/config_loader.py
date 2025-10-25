@@ -42,6 +42,10 @@ CONFIG = {
     "binance_api_key": _get_env("BINANCE_API_KEY"),
     "binance_secret_key": _get_env("BINANCE_SECRET_KEY"),
     "binance_testnet": _get_env("BINANCE_TESTNET", "false"),
+    # Binance Futures Configuration
+    "binance_futures_enabled": _get_env("BINANCE_FUTURES_ENABLED", "false"),
+    "binance_futures_leverage": _get_env("BINANCE_FUTURES_LEVERAGE", "5.0"),
+    "binance_futures_margin_type": _get_env("BINANCE_FUTURES_MARGIN_TYPE", "ISOLATED"),
     # Trading platform selection
     "trading_platform": _get_env("TRADING_PLATFORM", "hyperliquid"),  # "hyperliquid" or "binance"
     # LLM via OpenRouter
