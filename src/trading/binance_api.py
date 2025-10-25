@@ -158,14 +158,32 @@ class BinanceAPI(BaseTradingAPI):
             # Clean asset name and format symbol properly - remove quotes and extra characters
             clean_asset = asset.strip().strip('"').strip("'").upper()
             symbol = f"{clean_asset}USDT"
-            quantity = self.round_size(asset, amount)
             
-            params = {
-                'symbol': symbol,
-                'side': 'BUY',
-                'type': 'MARKET',
-                'quantity': str(quantity)
-            }
+            # Get current price to determine if we should use quantity or quoteOrderQty
+            current_price = await self.get_current_price(asset)
+            order_value = amount * current_price
+            
+            # Use quoteOrderQty for small amounts to avoid LOT_SIZE errors
+            if order_value < 10.0:  # If order value is less than $10, use quoteOrderQty
+                params = {
+                    'symbol': symbol,
+                    'side': 'BUY',
+                    'type': 'MARKET',
+                    'quoteOrderQty': str(round(order_value, 2))  # Use dollar amount
+                }
+                logging.info(f"Using quoteOrderQty for {asset}: ${order_value:.2f}")
+            else:
+                quantity = self.round_size(asset, amount)
+                params = {
+                    'symbol': symbol,
+                    'side': 'BUY',
+                    'type': 'MARKET',
+                    'quantity': str(quantity)
+                }
+                logging.info(f"Using quantity for {asset}: {quantity} (order value: ${order_value:.2f})")
+            
+            # Log the exact parameters being sent
+            logging.info(f"Order parameters for {asset}: {params}")
             
             result = await self._make_request('POST', '/api/v3/order', params, signed=True)
             return {'response': {'data': {'statuses': [{'filled': {'oid': str(result.get('orderId'))}}]}}}
@@ -179,14 +197,32 @@ class BinanceAPI(BaseTradingAPI):
             # Clean asset name and format symbol properly - remove quotes and extra characters
             clean_asset = asset.strip().strip('"').strip("'").upper()
             symbol = f"{clean_asset}USDT"
-            quantity = self.round_size(asset, amount)
             
-            params = {
-                'symbol': symbol,
-                'side': 'SELL',
-                'type': 'MARKET',
-                'quantity': str(quantity)
-            }
+            # Get current price to determine if we should use quantity or quoteOrderQty
+            current_price = await self.get_current_price(asset)
+            order_value = amount * current_price
+            
+            # Use quoteOrderQty for small amounts to avoid LOT_SIZE errors
+            if order_value < 10.0:  # If order value is less than $10, use quoteOrderQty
+                params = {
+                    'symbol': symbol,
+                    'side': 'SELL',
+                    'type': 'MARKET',
+                    'quoteOrderQty': str(round(order_value, 2))  # Use dollar amount
+                }
+                logging.info(f"Using quoteOrderQty for {asset}: ${order_value:.2f}")
+            else:
+                quantity = self.round_size(asset, amount)
+                params = {
+                    'symbol': symbol,
+                    'side': 'SELL',
+                    'type': 'MARKET',
+                    'quantity': str(quantity)
+                }
+                logging.info(f"Using quantity for {asset}: {quantity} (order value: ${order_value:.2f})")
+            
+            # Log the exact parameters being sent
+            logging.info(f"Order parameters for {asset}: {params}")
             
             result = await self._make_request('POST', '/api/v3/order', params, signed=True)
             return {'response': {'data': {'statuses': [{'filled': {'oid': str(result.get('orderId'))}}]}}}
@@ -345,7 +381,18 @@ class BinanceAPI(BaseTradingAPI):
     
     def round_size(self, asset: str, amount: float) -> float:
         """Round amount to asset's precision."""
-        # Binance typically uses 8 decimal places for most assets
-        # This is a simplified implementation - in production, you'd fetch
-        # the actual precision from the exchange info endpoint
-        return round(amount, 8)
+        # Binance step sizes for major assets
+        step_sizes = {
+            'BTC': 0.00001,   # 5 decimal places
+            'ETH': 0.0001,    # 4 decimal places
+            'SOL': 0.001,     # 3 decimal places
+            'BNB': 0.001,     # 3 decimal places
+            'ZEC': 0.001,     # 3 decimal places
+        }
+        
+        # Get step size for the asset
+        step_size = step_sizes.get(asset.upper(), 0.00001)
+        
+        # Round to the appropriate step size
+        rounded = round(amount / step_size) * step_size
+        return max(rounded, step_size)  # Ensure minimum step size
