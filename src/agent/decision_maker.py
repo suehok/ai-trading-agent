@@ -7,6 +7,9 @@ from datetime import datetime
 
 def _get_valid_model(model: str) -> str:
     """Get a valid LLM model, with fallback for invalid models."""
+    # Clean the model string (remove extra spaces and quotes)
+    clean_model = model.strip().strip('"').strip("'")
+    
     # List of invalid models that should be replaced
     invalid_models = [
         "deepseek/deepseek-chat-v3.1",
@@ -15,11 +18,11 @@ def _get_valid_model(model: str) -> str:
     ]
     
     # If the model is invalid, use a valid fallback
-    if model in invalid_models:
-        logging.warning(f"Invalid model '{model}' detected. Using fallback 'x-ai/grok-4'")
+    if clean_model in invalid_models:
+        logging.warning(f"Invalid model '{model}' (cleaned: '{clean_model}') detected. Using fallback 'x-ai/grok-4'")
         return "x-ai/grok-4"
     
-    return model
+    return clean_model
 
 class TradingAgent:
     def __init__(self):
@@ -125,6 +128,9 @@ class TradingAgent:
             if original_model != validated_model:
                 payload['model'] = validated_model
                 logging.warning(f"Model corrected at runtime: '{original_model}' -> '{validated_model}'")
+                # Also log to file for debugging
+                with open("model_corrections.log", "a") as f:
+                    f.write(f"{datetime.now()}: Model corrected '{original_model}' -> '{validated_model}'\n")
             
             # Log the full request payload for debugging
             logging.info(f"Sending request to OpenRouter (model: {payload.get('model')})")
