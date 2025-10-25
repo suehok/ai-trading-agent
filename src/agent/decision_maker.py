@@ -12,10 +12,14 @@ def _get_valid_model(model: str) -> str:
     clean_model = model.strip().strip('"').strip("'")
     
     # List of invalid models that should be replaced
+    # Note: deepseek/deepseek-chat-v3.1, deepseek/deepseek-chat-v3, and deepseek/deepseek-chat are actually VALID
+    # Only include truly invalid models here
     invalid_models = [
-        "deepseek/deepseek-chat-v3.1",
-        "deepseek/deepseek-chat-v3",
-        "deepseek/deepseek-chat"
+        "deepseek/deepseek-chat-v2",  # This one is actually invalid
+        "deepseek/deepseek-coder",    # This one is actually invalid
+        "deepseek/deepseek-coder-v2", # This one is actually invalid
+        "deepseek/deepseek-llm",      # This one is actually invalid
+        "deepseek/deepseek-llm-v2"    # This one is actually invalid
     ]
     
     # If the model is invalid, use a valid fallback

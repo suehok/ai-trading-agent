@@ -27,10 +27,14 @@ def test_env_model():
     print(f"Current LLM_MODEL from .env: '{model}'")
     
     # List of invalid models that should be replaced
+    # Note: deepseek/deepseek-chat-v3.1, deepseek/deepseek-chat-v3, and deepseek/deepseek-chat are actually VALID
+    # Only include truly invalid models here
     invalid_models = [
-        "deepseek/deepseek-chat-v3.1",
-        "deepseek/deepseek-chat-v3",
-        "deepseek/deepseek-chat"
+        "deepseek/deepseek-chat-v2",  # This one is actually invalid
+        "deepseek/deepseek-coder",    # This one is actually invalid
+        "deepseek/deepseek-coder-v2", # This one is actually invalid
+        "deepseek/deepseek-llm",      # This one is actually invalid
+        "deepseek/deepseek-llm-v2"    # This one is actually invalid
     ]
     
     # Check if model is invalid
@@ -49,10 +53,14 @@ def test_model_validation_function():
     
     def _get_valid_model(model: str) -> str:
         """Get a valid LLM model, with fallback for invalid models."""
+        # Note: deepseek/deepseek-chat-v3.1, deepseek/deepseek-chat-v3, and deepseek/deepseek-chat are actually VALID
+        # Only include truly invalid models here
         invalid_models = [
-            "deepseek/deepseek-chat-v3.1",
-            "deepseek/deepseek-chat-v3",
-            "deepseek/deepseek-chat"
+            "deepseek/deepseek-chat-v2",  # This one is actually invalid
+            "deepseek/deepseek-coder",    # This one is actually invalid
+            "deepseek/deepseek-coder-v2", # This one is actually invalid
+            "deepseek/deepseek-llm",      # This one is actually invalid
+            "deepseek/deepseek-llm-v2"    # This one is actually invalid
         ]
         
         if model in invalid_models:
@@ -63,9 +71,11 @@ def test_model_validation_function():
     
     # Test cases
     test_cases = [
-        ("deepseek/deepseek-chat-v3.1", "x-ai/grok-4"),
-        ("deepseek/deepseek-chat-v3", "x-ai/grok-4"),
-        ("deepseek/deepseek-chat", "x-ai/grok-4"),
+        ("deepseek/deepseek-chat-v3.1", "deepseek/deepseek-chat-v3.1"),  # Now valid!
+        ("deepseek/deepseek-chat-v3", "deepseek/deepseek-chat-v3"),      # Now valid!
+        ("deepseek/deepseek-chat", "deepseek/deepseek-chat"),            # Now valid!
+        ("deepseek/deepseek-chat-v2", "x-ai/grok-4"),                    # Still invalid
+        ("deepseek/deepseek-coder", "x-ai/grok-4"),                      # Still invalid
         ("x-ai/grok-4", "x-ai/grok-4"),
         ("openai/gpt-4", "openai/gpt-4"),
     ]
