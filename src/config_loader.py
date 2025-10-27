@@ -11,23 +11,28 @@ def _get_env(name: str, default: str | None = None, required: bool = False) -> s
 
 def _get_valid_model() -> str:
     """Get a valid LLM model, with fallback for invalid models."""
-    model = _get_env("LLM_MODEL", "x-ai/grok-4")
+    model = _get_env("LLM_MODEL", "deepseek-chat")
     
     # List of invalid models that should be replaced
-    # Note: deepseek/deepseek-chat-v3.1, deepseek/deepseek-chat-v3, and deepseek/deepseek-chat are actually VALID
-    # Only include truly invalid models here
+    # For OpenRouter: deepseek/deepseek-chat-v2, deepseek/deepseek-coder, etc. are invalid
+    # For DeepSeek API: deepseek-chat-v2, deepseek-coder, etc. are invalid
     invalid_models = [
-        "deepseek/deepseek-chat-v2",  # This one is actually invalid
-        "deepseek/deepseek-coder",    # This one is actually invalid
-        "deepseek/deepseek-coder-v2", # This one is actually invalid
-        "deepseek/deepseek-llm",      # This one is actually invalid
-        "deepseek/deepseek-llm-v2"    # This one is actually invalid
+        "deepseek/deepseek-chat-v2",  # OpenRouter invalid
+        "deepseek/deepseek-coder",    # OpenRouter invalid
+        "deepseek/deepseek-coder-v2", # OpenRouter invalid
+        "deepseek/deepseek-llm",      # OpenRouter invalid
+        "deepseek/deepseek-llm-v2",   # OpenRouter invalid
+        "deepseek-chat-v2",           # DeepSeek API invalid
+        "deepseek-coder",             # DeepSeek API invalid
+        "deepseek-coder-v2",          # DeepSeek API invalid
+        "deepseek-llm",               # DeepSeek API invalid
+        "deepseek-llm-v2"             # DeepSeek API invalid
     ]
     
     # If the model is invalid, use a valid fallback
     if model in invalid_models:
-        print(f"Warning: Invalid model '{model}' detected. Using fallback 'x-ai/grok-4'")
-        return "x-ai/grok-4"
+        print(f"Warning: Invalid model '{model}' detected. Using fallback 'deepseek-chat'")
+        return "deepseek-chat"
     
     return model
 
@@ -48,11 +53,16 @@ CONFIG = {
     "binance_futures_margin_type": _get_env("BINANCE_FUTURES_MARGIN_TYPE", "ISOLATED"),
     # Trading platform selection
     "trading_platform": _get_env("TRADING_PLATFORM", "hyperliquid"),  # "hyperliquid" or "binance"
-    # LLM via OpenRouter
-    "openrouter_api_key": _get_env("OPENROUTER_API_KEY", required=True),
+    # LLM Configuration
+    "llm_provider": _get_env("LLM_PROVIDER", "deepseek"),  # "openrouter" or "deepseek"
+    # OpenRouter Configuration (when LLM_PROVIDER="openrouter")
+    "openrouter_api_key": _get_env("OPENROUTER_API_KEY"),
     "openrouter_base_url": _get_env("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
     "openrouter_referer": _get_env("OPENROUTER_REFERER"),
     "openrouter_app_title": _get_env("OPENROUTER_APP_TITLE", "trading-agent"),
+    # DeepSeek API Configuration (when LLM_PROVIDER="deepseek")
+    "deepseek_api_key": _get_env("DEEPSEEK_API_KEY"),
+    "deepseek_base_url": _get_env("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
     "llm_model": _get_valid_model(),
     # Runtime controls via env
     "assets": _get_env("ASSETS"),  # e.g., "BTC ETH SOL" or "BTC,ETH,SOL"

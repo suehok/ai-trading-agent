@@ -12,34 +12,54 @@ def _get_valid_model(model: str) -> str:
     clean_model = model.strip().strip('"').strip("'")
     
     # List of invalid models that should be replaced
-    # Note: deepseek/deepseek-chat-v3.1, deepseek/deepseek-chat-v3, and deepseek/deepseek-chat are actually VALID
-    # Only include truly invalid models here
+    # For OpenRouter: deepseek/deepseek-chat-v2, deepseek/deepseek-coder, etc. are invalid
+    # For DeepSeek API: deepseek-chat-v2, deepseek-coder, etc. are invalid
     invalid_models = [
-        "deepseek/deepseek-chat-v2",  # This one is actually invalid
-        "deepseek/deepseek-coder",    # This one is actually invalid
-        "deepseek/deepseek-coder-v2", # This one is actually invalid
-        "deepseek/deepseek-llm",      # This one is actually invalid
-        "deepseek/deepseek-llm-v2"    # This one is actually invalid
+        "deepseek/deepseek-chat-v2",  # OpenRouter invalid
+        "deepseek/deepseek-coder",    # OpenRouter invalid
+        "deepseek/deepseek-coder-v2", # OpenRouter invalid
+        "deepseek/deepseek-llm",      # OpenRouter invalid
+        "deepseek/deepseek-llm-v2",   # OpenRouter invalid
+        "deepseek-chat-v2",           # DeepSeek API invalid
+        "deepseek-coder",             # DeepSeek API invalid
+        "deepseek-coder-v2",          # DeepSeek API invalid
+        "deepseek-llm",               # DeepSeek API invalid
+        "deepseek-llm-v2"             # DeepSeek API invalid
     ]
     
     # If the model is invalid, use a valid fallback
     if clean_model in invalid_models:
-        logging.warning(f"Invalid model '{model}' (cleaned: '{clean_model}') detected. Using fallback 'x-ai/grok-4'")
-        return "x-ai/grok-4"
+        logging.warning(f"Invalid model '{model}' (cleaned: '{clean_model}') detected. Using fallback 'deepseek-chat'")
+        return "deepseek-chat"
     
     return clean_model
 
 class TradingAgent:
     def __init__(self):
         self.model = _get_valid_model(CONFIG["llm_model"])
-        self.api_key = CONFIG["openrouter_api_key"]
-        base = CONFIG["openrouter_base_url"]
-        self.base_url = f"{base}/chat/completions"
-        self.referer = CONFIG.get("openrouter_referer")
-        self.app_title = CONFIG.get("openrouter_app_title")
+        self.provider = CONFIG["llm_provider"]
+        
+        # Configure API based on provider
+        if self.provider == "deepseek":
+            self.api_key = CONFIG["deepseek_api_key"]
+            if not self.api_key:
+                raise RuntimeError("DEEPSEEK_API_KEY is required when LLM_PROVIDER=deepseek")
+            base_url = CONFIG["deepseek_base_url"]
+            self.base_url = f"{base_url}/chat/completions"
+            self.referer = None
+            self.app_title = None
+        else:  # openrouter (default)
+            self.api_key = CONFIG["openrouter_api_key"]
+            if not self.api_key:
+                raise RuntimeError("OPENROUTER_API_KEY is required when LLM_PROVIDER=openrouter")
+            base_url = CONFIG["openrouter_base_url"]
+            self.base_url = f"{base_url}/chat/completions"
+            self.referer = CONFIG.get("openrouter_referer")
+            self.app_title = CONFIG.get("openrouter_app_title")
+        
         self.taapi = TAAPIClient()
         # Fast/cheap sanitizer model to normalize outputs on parse failures
-        self.sanitize_model = CONFIG.get("sanitize_model") or "openai/gpt-5"
+        self.sanitize_model = CONFIG.get("sanitize_model") or "deepseek-chat"
 
     def decide_trade(self, assets, context):
         """Decide for multiple assets in one call. Returns list of dicts."""
@@ -138,9 +158,11 @@ class TradingAgent:
                     f.write(f"{datetime.now()}: Model corrected '{original_model}' -> '{validated_model}'\n")
             
             # Log the full request payload for debugging
-            logging.info(f"Sending request to OpenRouter (model: {payload.get('model')})")
+            provider_name = "DeepSeek" if self.provider == "deepseek" else "OpenRouter"
+            logging.info(f"Sending request to {provider_name} (model: {payload.get('model')})")
             with open("llm_requests.log", "a") as f:
                 f.write(f"\n\n=== {datetime.now()} ===\n")
+                f.write(f"Provider: {provider_name}\n")
                 f.write(f"Model: {payload.get('model')}\n")
                 f.write(f"Headers: {json.dumps({k: v for k, v in headers.items() if k != 'Authorization'})}\n")
                 f.write(f"Payload:\n{json.dumps(payload, indent=2)}\n")
@@ -148,12 +170,12 @@ class TradingAgent:
             max_retries = 3
             for attempt in range(max_retries):
                 try:
-                    logging.info(f"Making OpenRouter request (attempt {attempt + 1}/{max_retries})")
+                    logging.info(f"Making {provider_name} request (attempt {attempt + 1}/{max_retries})")
                     resp = requests.post(self.base_url, headers=headers, json=payload, timeout=90)
-                    logging.info(f"Received response from OpenRouter (status: {resp.status_code})")
+                    logging.info(f"Received response from {provider_name} (status: {resp.status_code})")
                     
                     if resp.status_code != 200:
-                        logging.error(f"OpenRouter error: {resp.status_code} - {resp.text}")
+                        logging.error(f"{provider_name} error: {resp.status_code} - {resp.text}")
                         with open("llm_requests.log", "a") as f:
                             f.write(f"ERROR Response: {resp.status_code} - {resp.text}\n")
                         if attempt < max_retries - 1:
@@ -327,6 +349,7 @@ class TradingAgent:
                     err = {}
                 raw = (err.get("error", {}).get("metadata", {}) or {}).get("raw", "")
                 provider = (err.get("error", {}).get("metadata", {}) or {}).get("provider_name", "")
+                # Handle provider-specific errors
                 if e.response.status_code == 422 and provider.lower().startswith("xai") and "deserialize" in raw.lower():
                     logging.warning("xAI rejected tool schema; retrying without tools.")
                     if allow_tools:
@@ -335,7 +358,8 @@ class TradingAgent:
                 # Provider may not support structured outputs / response_format
                 err_text = json.dumps(err)
                 if allow_structured and ("response_format" in err_text or "structured" in err_text or e.response.status_code in (400, 422)):
-                    logging.warning("Provider rejected structured outputs; retrying without response_format.")
+                    provider_name = "DeepSeek" if self.provider == "deepseek" else "OpenRouter"
+                    logging.warning(f"{provider_name} rejected structured outputs; retrying without response_format.")
                     allow_structured = False
                     continue
                 raise
