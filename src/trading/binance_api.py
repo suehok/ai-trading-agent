@@ -449,6 +449,24 @@ class BinanceAPI(BaseTradingAPI):
                     # Round to the appropriate step size
                     rounded = round(amount / step_size) * step_size
                     rounded = max(rounded, min_qty)
+                    
+                    # Additional precision cleanup based on step size
+                    if step_size >= 1.0:
+                        rounded = round(rounded, 0)
+                    elif step_size >= 0.1:
+                        rounded = round(rounded, 1)
+                    elif step_size >= 0.01:
+                        rounded = round(rounded, 2)
+                    elif step_size >= 0.001:
+                        rounded = round(rounded, 3)
+                    elif step_size >= 0.0001:
+                        rounded = round(rounded, 4)
+                    elif step_size >= 0.00001:
+                        rounded = round(rounded, 5)
+                    else:
+                        rounded = round(rounded, 8)
+                    
+                    logging.debug(f"Live precision for {clean_asset}: {amount} -> {rounded} (step_size: {step_size})")
                 else:
                     # Fallback to hardcoded precision
                     rounded = self._apply_precision_fix(clean_asset, amount)
@@ -505,7 +523,23 @@ class BinanceAPI(BaseTradingAPI):
             # Default: 8 decimal places
             rounded = round(rounded, 8)
         
-        return max(rounded, step_size)
+        # Ensure minimum quantity and avoid floating point precision issues
+        min_qty = step_size
+        rounded = max(rounded, min_qty)
+        
+        # Final precision cleanup to avoid floating point artifacts
+        if clean_asset in ['SOL', 'BNB', 'ZEC']:
+            # For 3 decimal places, ensure we don't have more precision
+            rounded = round(rounded, 3)
+        elif clean_asset == 'ETH':
+            # For 4 decimal places, ensure we don't have more precision
+            rounded = round(rounded, 4)
+        elif clean_asset == 'BTC':
+            # For 5 decimal places, ensure we don't have more precision
+            rounded = round(rounded, 5)
+        
+        logging.debug(f"Precision fix for {clean_asset}: {amount} -> {rounded} (step_size: {step_size})")
+        return rounded
     
     # Futures-specific methods
     async def set_leverage(self, symbol: str, leverage: int) -> Dict[str, Any]:
