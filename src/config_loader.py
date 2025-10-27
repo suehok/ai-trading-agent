@@ -13,6 +13,16 @@ def _get_valid_model() -> str:
     """Get a valid LLM model, with fallback for invalid models."""
     model = _get_env("LLM_MODEL", "deepseek-chat")
     
+    # Convert OpenRouter model format to DeepSeek API format if needed
+    if model.startswith("deepseek/deepseek-chat"):
+        # Convert OpenRouter format to DeepSeek API format
+        if model == "deepseek/deepseek-chat-v3.1":
+            return "deepseek-chat"
+        elif model == "deepseek/deepseek-chat-v3":
+            return "deepseek-chat"
+        elif model == "deepseek/deepseek-chat":
+            return "deepseek-chat"
+    
     # List of invalid models that should be replaced
     # For OpenRouter: deepseek/deepseek-chat-v2, deepseek/deepseek-coder, etc. are invalid
     # For DeepSeek API: deepseek-chat-v2, deepseek-coder, etc. are invalid

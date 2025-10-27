@@ -11,6 +11,16 @@ def _get_valid_model(model: str) -> str:
     # Clean the model string (remove extra spaces and quotes)
     clean_model = model.strip().strip('"').strip("'")
     
+    # Convert OpenRouter model format to DeepSeek API format if needed
+    if clean_model.startswith("deepseek/deepseek-chat"):
+        # Convert OpenRouter format to DeepSeek API format
+        if clean_model == "deepseek/deepseek-chat-v3.1":
+            return "deepseek-chat"
+        elif clean_model == "deepseek/deepseek-chat-v3":
+            return "deepseek-chat"
+        elif clean_model == "deepseek/deepseek-chat":
+            return "deepseek-chat"
+    
     # List of invalid models that should be replaced
     # For OpenRouter: deepseek/deepseek-chat-v2, deepseek/deepseek-coder, etc. are invalid
     # For DeepSeek API: deepseek-chat-v2, deepseek-coder, etc. are invalid
