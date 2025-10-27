@@ -166,6 +166,11 @@ class BinanceAPI(BaseTradingAPI):
             clean_asset = asset.strip().strip('"').strip("'").upper()
             symbol = f"{clean_asset}USDT"
             
+            # Set leverage and margin type for futures trading
+            if self.futures_enabled:
+                await self.set_leverage(symbol, int(self.futures_leverage))
+                await self.set_margin_type(symbol, self.futures_margin_type)
+            
             # Get current price to determine if we should use quantity or quoteOrderQty
             current_price = await self.get_current_price(asset)
             order_value = amount * current_price
@@ -208,6 +213,11 @@ class BinanceAPI(BaseTradingAPI):
             # Clean asset name and format symbol properly - remove quotes and extra characters
             clean_asset = asset.strip().strip('"').strip("'").upper()
             symbol = f"{clean_asset}USDT"
+            
+            # Set leverage and margin type for futures trading
+            if self.futures_enabled:
+                await self.set_leverage(symbol, int(self.futures_leverage))
+                await self.set_margin_type(symbol, self.futures_margin_type)
             
             # Get current price to determine if we should use quantity or quoteOrderQty
             current_price = await self.get_current_price(asset)
@@ -285,9 +295,8 @@ class BinanceAPI(BaseTradingAPI):
             params = {
                 'symbol': symbol,
                 'side': side,
-                'type': 'STOP_LOSS_LIMIT',
+                'type': 'STOP_MARKET',
                 'quantity': str(quantity),
-                'price': str(sl_price),
                 'stopPrice': str(sl_price),
                 'timeInForce': 'GTC'
             }
@@ -433,7 +442,11 @@ class BinanceAPI(BaseTradingAPI):
     async def get_symbol_info(self, symbol: str) -> Dict[str, Any]:
         """Get symbol information including lot size rules."""
         try:
-            exchange_info = await self._make_request('GET', '/api/v3/exchangeInfo')
+            # Use futures endpoint if futures trading is enabled
+            if self.futures_enabled:
+                exchange_info = await self._make_request('GET', '/fapi/v1/exchangeInfo', use_futures=True)
+            else:
+                exchange_info = await self._make_request('GET', '/api/v3/exchangeInfo')
             symbols = exchange_info.get('symbols', [])
             
             for symbol_info in symbols:
