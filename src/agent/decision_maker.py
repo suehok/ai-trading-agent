@@ -264,16 +264,19 @@ class TradingAgent:
                         )},
                         {"role": "user", "content": raw_content},
                     ],
-                    "response_format": {
+                    "temperature": 0,
+                }
+                
+                # Only use structured outputs for providers that support it (OpenRouter)
+                if self.provider == "openrouter":
+                    payload["response_format"] = {
                         "type": "json_schema",
                         "json_schema": {
                             "name": "trade_decisions",
                             "strict": True,
                             "schema": schema,
                         },
-                    },
-                    "temperature": 0,
-                }
+                    }
                 resp = _post(payload)
                 msg = resp.get("choices", [{}])[0].get("message", {})
                 parsed = msg.get("parsed")
