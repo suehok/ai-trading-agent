@@ -69,7 +69,10 @@ class TradingAgent:
         
         self.taapi = TAAPIClient()
         # Fast/cheap sanitizer model to normalize outputs on parse failures
-        self.sanitize_model = CONFIG.get("sanitize_model") or "deepseek-chat"
+        if self.provider == "deepseek":
+            self.sanitize_model = CONFIG.get("sanitize_model") or "deepseek-chat"
+        else:
+            self.sanitize_model = CONFIG.get("sanitize_model") or "openai/gpt-3.5-turbo"
 
     def decide_trade(self, assets, context):
         """Decide for multiple assets in one call. Returns list of dicts."""
@@ -116,6 +119,7 @@ class TradingAgent:
             "Output contract\n"
             "- Output STRICT JSON array (no Markdown, no extra text), one object per asset in the SAME ORDER as the provided assets list.\n"
             "- Exact keys for each object: {asset, action, allocation_usd, tp_price, sl_price, exit_plan, rationale}\n"
+            "- CRITICAL: Return ONLY valid JSON array, no additional text or formatting.\n"
         )
         user_prompt = context
         messages = [
@@ -338,7 +342,8 @@ class TradingAgent:
 
         for _ in range(6):
             data = {"model": self.model, "messages": messages}
-            if allow_structured:
+            # Only use structured outputs for providers that support it (OpenRouter)
+            if allow_structured and self.provider == "openrouter":
                 data["response_format"] = {
                     "type": "json_schema",
                     "json_schema": {
