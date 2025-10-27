@@ -192,7 +192,11 @@ class BinanceAPI(BaseTradingAPI):
             # Log the exact parameters being sent
             logging.info(f"Order parameters for {asset}: {params}")
             
-            result = await self._make_request('POST', '/api/v3/order', params, signed=True)
+            # Use futures endpoint if futures trading is enabled
+            if self.futures_enabled:
+                result = await self._make_request('POST', '/fapi/v1/order', params, signed=True, use_futures=True)
+            else:
+                result = await self._make_request('POST', '/api/v3/order', params, signed=True)
             return {'response': {'data': {'statuses': [{'filled': {'oid': str(result.get('orderId'))}}]}}}
         except Exception as e:
             logging.error(f"Error placing buy order for {asset}: {e}")
@@ -231,7 +235,11 @@ class BinanceAPI(BaseTradingAPI):
             # Log the exact parameters being sent
             logging.info(f"Order parameters for {asset}: {params}")
             
-            result = await self._make_request('POST', '/api/v3/order', params, signed=True)
+            # Use futures endpoint if futures trading is enabled
+            if self.futures_enabled:
+                result = await self._make_request('POST', '/fapi/v1/order', params, signed=True, use_futures=True)
+            else:
+                result = await self._make_request('POST', '/api/v3/order', params, signed=True)
             return {'response': {'data': {'statuses': [{'filled': {'oid': str(result.get('orderId'))}}]}}}
         except Exception as e:
             logging.error(f"Error placing sell order for {asset}: {e}")
@@ -255,7 +263,11 @@ class BinanceAPI(BaseTradingAPI):
                 'timeInForce': 'GTC'
             }
             
-            result = await self._make_request('POST', '/api/v3/order', params, signed=True)
+            # Use futures endpoint if futures trading is enabled
+            if self.futures_enabled:
+                result = await self._make_request('POST', '/fapi/v1/order', params, signed=True, use_futures=True)
+            else:
+                result = await self._make_request('POST', '/api/v3/order', params, signed=True)
             return {'response': {'data': {'statuses': [{'resting': {'oid': str(result.get('orderId'))}}]}}}
         except Exception as e:
             logging.error(f"Error placing take profit for {asset}: {e}")
@@ -280,7 +292,11 @@ class BinanceAPI(BaseTradingAPI):
                 'timeInForce': 'GTC'
             }
             
-            result = await self._make_request('POST', '/api/v3/order', params, signed=True)
+            # Use futures endpoint if futures trading is enabled
+            if self.futures_enabled:
+                result = await self._make_request('POST', '/fapi/v1/order', params, signed=True, use_futures=True)
+            else:
+                result = await self._make_request('POST', '/api/v3/order', params, signed=True)
             return {'response': {'data': {'statuses': [{'resting': {'oid': str(result.get('orderId'))}}]}}}
         except Exception as e:
             logging.error(f"Error placing stop loss for {asset}: {e}")
@@ -297,7 +313,11 @@ class BinanceAPI(BaseTradingAPI):
                 'orderId': order_id
             }
             
-            result = await self._make_request('DELETE', '/api/v3/order', params, signed=True)
+            # Use futures endpoint if futures trading is enabled
+            if self.futures_enabled:
+                result = await self._make_request('DELETE', '/fapi/v1/order', params, signed=True, use_futures=True)
+            else:
+                result = await self._make_request('DELETE', '/api/v3/order', params, signed=True)
             return result
         except Exception as e:
             logging.error(f"Error canceling order {order_id} for {asset}: {e}")
@@ -311,7 +331,11 @@ class BinanceAPI(BaseTradingAPI):
             symbol = f"{clean_asset}USDT"
             params = {'symbol': symbol}
             
-            result = await self._make_request('DELETE', '/api/v3/openOrders', params, signed=True)
+            # Use futures endpoint if futures trading is enabled
+            if self.futures_enabled:
+                result = await self._make_request('DELETE', '/fapi/v1/allOpenOrders', params, signed=True, use_futures=True)
+            else:
+                result = await self._make_request('DELETE', '/api/v3/openOrders', params, signed=True)
             return {'status': 'ok', 'cancelled_count': len(result)}
         except Exception as e:
             logging.error(f"Error canceling all orders for {asset}: {e}")
@@ -320,7 +344,11 @@ class BinanceAPI(BaseTradingAPI):
     async def get_open_orders(self) -> List[Dict[str, Any]]:
         """Get all open orders."""
         try:
-            orders = await self._make_request('GET', '/api/v3/openOrders', signed=True)
+            # Use futures endpoint if futures trading is enabled
+            if self.futures_enabled:
+                orders = await self._make_request('GET', '/fapi/v1/openOrders', signed=True, use_futures=True)
+            else:
+                orders = await self._make_request('GET', '/api/v3/openOrders', signed=True)
             normalized_orders = []
             
             for order in orders:
